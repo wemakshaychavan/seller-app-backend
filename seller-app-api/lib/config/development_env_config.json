@@ -21,7 +21,7 @@
   },
   "database": {
     "username": "akshay",
-    "password": "akshay",
+    "password": "",
     "name": "sellerapp",
     "host": "localhost",
     "port": "5432",
