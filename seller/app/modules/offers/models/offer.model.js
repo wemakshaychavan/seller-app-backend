@@ -10,7 +10,7 @@ const offerSchema = new mongoose.Schema({
     },
     organization: {
         type: String,
-        ref:'Organization',
+        ref: 'Organization',
         required: true
     },
     type: {
@@ -28,17 +28,22 @@ const offerSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
     },
-    validity: { createdBy: { type: String },
-    updatedBy: { type: String },
+    additive: {
+        type: Boolean,
+        default: false,
+    },
+    valid: {
         from: {
             type: Number,
-            required: true
         },
         to: {
             type: Number,
-            required: true
         }
     },
+    items: {
+        type: [Object]
+    },
+    images: { type: Array },
     createdBy: { type: String },
     updatedBy: { type: String },
     createdAt: {

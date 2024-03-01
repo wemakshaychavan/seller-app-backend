@@ -1,45 +1,53 @@
-// import Joi from 'joi';
-// module.exports = {
-//     create: () => {
-//         return Joi.object({
-//             name: Joi.string(),
-//             inputType: Joi.string(),
-//             minQuantity: Joi.number(),
-//             maxQuantity: Joi.number(),
-//             description:Joi.string().allow(''),
-//             seq: Joi.number(),
-//             customizations: Joi.array().items(
-//                 Joi.object({
-//                     customizationId: Joi.string(),
-//                     nextGroupId: Joi.array().items(
-//                         Joi.object({
-//                             groupId: Joi.string()
-//                         })
-//                     ),
-//                     default: Joi.boolean()
-//                 })
-//             )
-//         });
-//     },
-//     update: () => {
-//         return Joi.object({
-//             name: Joi.string(),
-//             inputType: Joi.string(),
-//             description:Joi.string().allow(''),
-//             minQuantity: Joi.number(),
-//             maxQuantity: Joi.number(),
-//             seq: Joi.number(),
-//             customizations: Joi.array().items(
-//                 Joi.object({
-//                     customizationId: Joi.string(),
-//                     nextGroupId: Joi.array().items(
-//                         Joi.object({
-//                             groupId: Joi.string()
-//                         })
-//                     ),
-//                     default: Joi.boolean()
-//                 })
-//             )
-//         });
-//     }
-// };
+import Joi from 'joi';
+module.exports = {
+    create: () => {
+        return Joi.object({
+            type: Joi.string(),
+            offerId: Joi.string(),
+            description: Joi.string().allow(''),
+            autoApply: Joi.boolean(),
+            additive: Joi.boolean(),
+            validFrom: Joi.number(),
+            validTo: Joi.number(),
+            items: Joi.array(),
+            images: Joi.array(),
+            qualifiers: Joi.object({
+                minValue: Joi.number(),
+                itemCount: Joi.number(),
+            }),
+            benefits: Joi.object({
+                valueType: Joi.string(),
+                value: Joi.number(),
+                valueCap: Joi.number(),
+                itemCount: Joi.number(),
+                itemId: Joi.string(),
+                itemValue: Joi.number(),
+            })
+        });
+    },
+    update: () => {
+        return Joi.object({
+            type: Joi.string(),
+            offerId: Joi.string(),
+            description: Joi.string().allow(''),
+            autoApply: Joi.boolean(),
+            additive: Joi.boolean(),
+            validFrom: Joi.number(),
+            validTo: Joi.number(),
+            items: Joi.array(),
+            images: Joi.array(),
+            qualifier: Joi.object({
+                minValue: Joi.number(),
+                itemCount: Joi.number(),
+            }),
+            benefit: Joi.object({
+                valueType: Joi.string(),
+                value: Joi.number(),
+                valueCap: Joi.number(),
+                itemCount: Joi.number(),
+                item: Joi.object(),
+                itemValue: Joi.number(),
+            })
+        });
+    }
+};
