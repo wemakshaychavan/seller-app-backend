@@ -15,6 +15,7 @@ import { mergedValidation } from '../../../lib/utils/bulkUploadValidaton';
 import { mergerdAttributeValidation } from '../../../lib/utils/bulkUploadAttributeValidation';
 import { templateAttributeKeys } from '../../../lib/utils/commonAttribute';
 import HttpRequest from "../../../lib/utils/HttpRequest";
+import s3 from "../../../lib/utils/s3Utils";
 
 class ProductController {
 
@@ -540,15 +541,15 @@ class ProductController {
                 if (res) {
                     console.log('mime--->', res);
 
-                    // let extention = imageURL.split('.').slice(-1)[0];
-                    keyName = keyName //+ '.' + extention;
+                    let extention = imageURL.split('.').slice(-1)[0];
+                    keyName = keyName + '.' + extention;
                     const blob = await res.buffer();
-                    const s3 = new AWS.S3({
+                    const s3Obj = new AWS.S3({
                         useAccelerateEndpoint: true,
                         region: region
                     });
 
-                    await s3.upload({
+                    await s3Obj.upload({
                         Bucket: bucket,
                         Key: keyName,
                         Body: blob
@@ -556,7 +557,8 @@ class ProductController {
 
                     //console.log("uploaded image --->",uploadedImage);
 
-                    imageUrls.push(keyName);
+                    let data = await s3.getSignedUrlForRead({path:keyName});
+                    imageUrls.push(data);
                 }
 
             }
