@@ -99,13 +99,14 @@ class OrderService {
             };
 
             fulfillment.organization = order.organization;
-            fulfillment.order = order.orderId;
+            fulfillment.order = order._id;
+            fulfillment.transactionId = order.transactionId;
             await fulfillment.save();
 
             // create fulfillment history for newly added fulfillment
 
             const fulfillmentHistory = {
-                orderId: order.orderId,
+                orderId: order._id,
                 type: order.fulfillments[0].type,
                 state: order.fulfillments[0].state.descriptor.code,
                 id: order.fulfillments[0].id
@@ -310,7 +311,7 @@ class OrderService {
             //create new fulfillment history
 
             let fulfillmentHistory = {
-                orderId: orderId,
+                orderId: order._id,
                 type: payload.fulfillmentType,
                 state: payload.newState,
                 id: payload.fulfillmentId
@@ -496,7 +497,7 @@ class OrderService {
         try {
             let order = await Order.findOne({ orderId: orderId });//.lean();
 
-            let returnRequest = await Fulfillment.findOne({ id: data.id, orderId: orderId });
+            let returnRequest = await Fulfillment.findOne({ id: data.id, order: order._id, transactionId: order.transactionId });
             //update order item level status
 
             console.log({ returnRequest });
@@ -688,7 +689,6 @@ class OrderService {
         try {
             let itemIndex = data.breakup.findIndex(x => x['@ondc/org/item_id'] === item);
             let itemToBeUpdated = data.breakup.find(x => x['@ondc/org/item_id'] === item);
-            console.log({hiiii : itemToBeUpdated})
             let priceToReduce = parseFloat(itemToBeUpdated.item.price.value) * quantity;
             itemToBeUpdated['@ondc/org/item_quantity'].count = itemToBeUpdated['@ondc/org/item_quantity'].count * quantity;
             itemToBeUpdated['price'].value = '' + (parseFloat(itemToBeUpdated['price'].value) * priceToReduce);
@@ -1169,15 +1169,15 @@ class OrderService {
             for (let fl of data.data.fulfillments) {
 
                 //create fl if not exist
-                let fulfilment = await Fulfillment.findOne({ id: fl.id, orderId: orderId });
+                let fulfilment = await Fulfillment.findOne({ id: fl.id, order: oldOrder._id, transactionId: oldOrder.transactionId });
 
                 if (!fulfilment) { //create new
                     let newFl = new Fulfillment();
                     newFl.id = fl.id;
-                    newFl.orderId = orderId;
                     newFl.request = fl;
                     newFl.organization = oldOrder.organization;
                     newFl.order = oldOrder._id;
+                    newFl.transactionId = oldOrder.transactionId;
                     await newFl.save();
                 }
 
