@@ -324,7 +324,7 @@ class OrderService {
             }
             let httpRequest = new HttpRequest(
                 mergedEnvironmentConfig.intraServiceApiEndpoints.client,
-                '/api/client/unsoliciated/status',
+                '/api/v2/client/unsoliciated/status',
                 'POST',
                 data,
                 {}
