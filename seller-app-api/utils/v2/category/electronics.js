@@ -345,15 +345,15 @@ export async function mapElectronicsData(data) {
         let serviceabilityUnit = ''
         let serviceabilityValue = ''
         if (org.storeDetails.location_availability === 'pan_india') {
-            serviceabilityType = 12
+            serviceabilityType = "12"
             serviceabilityUnit = 'country'
             serviceabilityValue = 'IND'
         } else if (org.storeDetails.location_availability === 'city') {
-            serviceabilityType = 11
+            serviceabilityType = "11"
             serviceabilityUnit = 'country'   // TODO : city pincodes is pending - harcoded for now
             serviceabilityValue = 'IND'      // TODO : city pincodes is pending - hardcoded for now
         } else if (org.storeDetails.location_availability === 'custom_area') {
-            serviceabilityType = 13
+            serviceabilityType = "13"
             serviceabilityUnit = 'polygon'
             const customArea = org.storeDetails.custom_area;
             const coordinates = customArea[0]?.map(coord => [coord.lng, coord.lat]);
@@ -375,7 +375,7 @@ export async function mapElectronicsData(data) {
 
             serviceabilityValue = value
         } else if (org.storeDetails.location_availability === 'radius') {
-            serviceabilityType = 10
+            serviceabilityType = "10"
             serviceabilityUnit = org.storeDetails?.radius?.unit
             serviceabilityValue = org.storeDetails?.radius?.value
         }
