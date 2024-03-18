@@ -1617,8 +1617,28 @@ class ProductService {
             if (onNetworkLogistics) {
                 deliveryFullfillment.start.time.timestamp = logisticData.message.order?.fulfillments[0].start?.time?.timestamp ?? ""
             } else {
-                fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-picked-up')
-                deliveryFullfillment.start.time = { timestamp: fulfillmentHistory?.updatedAt }
+
+                fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-picked-up');
+                // Extract the timestamp from fulfillmentHistory
+                const startTimestamp = fulfillmentHistory?.updatedAt;
+
+                // Create moment objects for timestamp and timestamp + 4 hours
+                const startTime = moment(startTimestamp);
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                // Construct the start time range object
+                const start = {
+                    time: {
+                        range: {
+                            start: startTime.utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
+                            end: startTimeRange
+                        }
+                    },
+                    timestamp: startTimestamp
+                };
+
+                // Assign the start time range object to deliveryFullfillment.start
+                deliveryFullfillment.start = start;
 
             }
         }
@@ -1629,7 +1649,25 @@ class ProductService {
                 deliveryFullfillment.end.time.timestamp = logisticData.message.order?.fulfillments[0].end?.time?.timestamp ?? ""
             } else {
                 fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-delivered')
-                deliveryFullfillment.end.time = { timestamp: fulfillmentHistory?.updatedAt }
+                const endTimestamp = fulfillmentHistory?.updatedAt;
+
+                // Create moment objects for timestamp and timestamp + 4 hours
+                const endTime = moment(endTimestamp);
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                // Construct the start time range object
+                const end = {
+                    time: {
+                        range: {
+                            start: endTime.utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
+                            end: endTimeRange
+                        },
+                        timestamp: endTimestamp
+                    }
+                };
+
+                // Assign the start time range object to deliveryFullfillment.start
+                deliveryFullfillment.end = end;
             }
         }
         if (onNetworkLogistics) {
@@ -2356,12 +2394,37 @@ class ProductService {
         } else {
             const currentMillis = Date.now();
             const deliveryTAT = moment.duration(org.providerDetail.storeDetails.deliveryTime).asMilliseconds();
+
+            // Create moment objects for startTime and endTime
+            const startTime = moment(currentMillis);
             const endTime = moment(currentMillis + deliveryTAT);
-            const formattedEndTime = endTime.utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
-            const formattedStartTime = moment(currentMillis).utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
-            confirmRequest.message.order.fulfillments[0].start.time = formattedEndTime
-            confirmRequest.message.order.fulfillments[0].end.time = formattedStartTime
-            confirmRequest.message.order.fulfillments[0]["@ondc/org/provider_name"] = org.providerDetail.name
+
+            // Add 4 hours to startTime and endTime
+            const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+            const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+            // Construct the start and end time objects
+            const start = {
+                time: {
+                    range: {
+                        start: startTime.utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
+                        end: startTimeRange
+                    }
+                }
+            };
+
+            const end = {
+                time: {
+                    range: {
+                        start: endTime.utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
+                        end: endTimeRange
+                    }
+                }
+            };
+
+            // Assign start and end time objects to confirmRequest
+            confirmRequest.message.order.fulfillments[0].start = start;
+            confirmRequest.message.order.fulfillments[0].end = end;
         }
 
         confirmRequest.message.provider = { ...confirmRequest.message.provider, "rateable": true }

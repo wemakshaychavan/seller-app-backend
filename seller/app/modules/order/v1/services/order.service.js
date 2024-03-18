@@ -274,7 +274,8 @@ class OrderService {
 
     async updateOrderFulfillmentStatus(orderId, payload) {
         try {
-            let fulfillment = await Fulfillment.findOne({ id: payload.fulfillmentId }).lean();
+            let order = await Order.findOne({ orderId: orderId }).lean();
+            let fulfillment = await Fulfillment.findOne({ id: payload.fulfillmentId, order: order._id }).lean();
             //check for fulfillment type 
 
             if (fulfillment.request.type !== 'Delivery') {
@@ -284,7 +285,6 @@ class OrderService {
 
             const oldStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === fulfillment.request.state.descriptor.code);
             const newStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === payload.newState);
-
             if (oldStatusData.seq > newStatusData.seq) {
                 throw new ConflictError(MESSAGES.STATUS_UPDATE_NOT_ALLOWED)
             }
@@ -295,7 +295,6 @@ class OrderService {
 
             //update fulfillments(attached with orders)
 
-            let order = await Order.findOne({ orderId: orderId }).lean();
             let updatedFulfillment = order.fulfillments.find(x => x.id == payload.fulfillmentId);
 
             updatedFulfillment.state = {
