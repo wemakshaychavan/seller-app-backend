@@ -576,7 +576,7 @@ class ProductController {
             console.log("req.query---------------",req.query)
             //notify client to update order status ready to ship to logistics
             let httpRequest = new HttpRequest(
-                'http://api.catalogus.in',
+                'https://api.catalogus.in',
                 'api/hub/search?'+`domain=${req.query.domain}&barcode_type=${req.query.barcode_type}&barcode=${req.query.barcode}`,
                 'GET',
                 {},
