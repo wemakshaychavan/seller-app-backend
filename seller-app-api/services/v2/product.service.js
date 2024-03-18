@@ -2517,7 +2517,7 @@ class ProductService {
                 deliveryCharges = {
                     "title": "Delivery charges",
                     "@ondc/org/title_type": "delivery",
-                    "@ondc/org/item_id": 1,
+                    "@ondc/org/item_id": 'F1',
                     "price": {
                         "currency": 'INR',
                         "value": '0'
@@ -2915,7 +2915,7 @@ class ProductService {
                 deliveryCharges = {
                     "title": "Delivery charges",
                     "@ondc/org/title_type": "delivery",
-                    "@ondc/org/item_id": '1',
+                    "@ondc/org/item_id": 'F1',
                     "price": {
                         "currency": 'INR',
                         "value": '0'
