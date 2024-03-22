@@ -580,7 +580,7 @@ class ProductController {
                 'api/hub/search?'+`domain=${req.query.domain}&barcode_type=${req.query.barcode_type}&barcode=${req.query.barcode}`,
                 'GET',
                 {},
-                {Authorization:`Bearer ${process.env.BHASHI_KEYS}`}
+                {Authorization:`Bearer ${process.env.CAAS_KEYS}`} //TODO: wrong env name
             );
 
             let results = await httpRequest.send();
