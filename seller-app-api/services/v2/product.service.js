@@ -2998,7 +2998,7 @@ class ProductService {
                         {
                             "descriptor":
                             {
-                                "code": "Non-serviceable"//Hard coded
+                                "code": "Serviceable"//Hard coded
                             }
                         }, end: selectData.message.order.fulfillments[0].end
                     }]
@@ -3025,7 +3025,7 @@ class ProductService {
                         {
                             "descriptor":
                             {
-                                "code": "Serviceable"//Hard coded
+                                "code": "Non-serviceable"//Hard coded
                             }
                         },
                         end: selectData.message.order.fulfillments[0].end
