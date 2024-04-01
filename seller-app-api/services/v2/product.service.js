@@ -1695,7 +1695,7 @@ class ProductService {
                 item.tags = { status: 'Cancelled' };
             }
             // item.tags={status:logisticData.message.order.fulfillments[0].state?.descriptor?.code};
-            item.fulfillment_id = onNetworkLogistics ? logisticData.message.order.fulfillments[0].id : 'F1'
+            //item.fulfillment_id = onNetworkLogistics ? logisticData.message.order.fulfillments[0].id : 'F1'
             delete item.state
             return item;
         });
