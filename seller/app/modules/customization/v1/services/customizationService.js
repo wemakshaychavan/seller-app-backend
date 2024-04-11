@@ -80,7 +80,7 @@ class CustomizationService {
         //TODO:Tirth check if given name has already been use in other group and throw error(Done)
         try {
             if (customizationDetails) {
-                await this.isValidTreeStructure(id, customizationDetails,currentUser);
+                //await this.isValidTreeStructure(id, customizationDetails,currentUser);
 
                 let existingGroup = await CustomizationGroup.findOne({
                     _id: id,
