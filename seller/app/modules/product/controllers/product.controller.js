@@ -454,7 +454,7 @@ class ProductController {
         try {
             const { name, organization } = req.query;
             const offset = parseInt(req.query.offset) || 0;
-            const limit = parseInt(req.query.limit) || 10;
+            const limit = parseInt(req.query.limit) || 1000;
 
             const params = {
                 name,
