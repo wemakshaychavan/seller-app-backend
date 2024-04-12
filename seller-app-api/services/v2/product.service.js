@@ -76,19 +76,10 @@ class ProductService {
             let category = domainNameSpace.find((cat) => {
                 return cat.domain === requestQuery.context.domain
             })
-            console.log({ hello: category })
-
             if (!category) {
-                category = {
-                    "name": "Grocery",
-                    "domain": "ONDC:RET10"
-                };
-                //    return false;
-                requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
+                   return false;
             }
-
             //save search request
-
             let searchRequest = new SearchRequest();
             searchRequest.domain = requestQuery.context.domain;
             searchRequest.bapId = requestQuery.context.bap_id;
@@ -96,7 +87,7 @@ class ProductService {
             searchRequest.transactionId = requestQuery.context.transaction_id;
             searchRequest.searchRequest = requestQuery;
             let requestType = requestQuery.message.intent?.tags?.find((data) => data.code === "catalog_inc") ?? null
-            console.log({ requestType })
+
             if (requestType) {
                 searchRequest.type = 'incr';
                 //check if its push or pull
@@ -117,7 +108,6 @@ class ProductService {
             let productData = []
 
             if (searchRequest.type === 'fullpull') {
-                console.log({ seaa: searchRequest.type })
 
                 let httpRequest = new HttpRequest(
                     serverUrl,
@@ -126,7 +116,6 @@ class ProductService {
                     headers
                 );
 
-                console.log({ seaa: httpRequest })
                 let result = await httpRequest.send();
 
                 logger.log('info', `[Product Service] search product : result :`, result.data);
