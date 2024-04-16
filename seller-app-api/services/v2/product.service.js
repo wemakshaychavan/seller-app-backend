@@ -80,11 +80,11 @@ class ProductService {
 
             if (!category) {
                 category = {
-                    "name": "Grocery",
-                    "domain": "ONDC:RET10"
+                    "name": "F&B",
+                    "domain": "ONDC:RET11"
                 };
                 //    return false;
-                requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
+                requestQuery.context.domain = 'ONDC:RET11'; //FIXME: remove this once
             }
 
             //save search request
