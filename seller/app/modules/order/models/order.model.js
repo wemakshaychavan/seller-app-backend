@@ -21,6 +21,9 @@ const orderSchema = new mongoose.Schema({
     fulfillments:{
         type:Object
     },
+    storeAddress:{
+        type:Object
+    },
     payment:{
         type:Object
     },

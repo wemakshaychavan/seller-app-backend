@@ -1,5 +1,6 @@
 import Order from '../../models/order.model';
 import Fulfillment from '../../models/fulfillments.model';
+import Organization from '../../../authentication/models/organization.model'
 import Product from '../../../product/models/product.model';
 import ProductCustomization from '../../../product/models/productCustomization.model';
 import ReturnItem from '../../models/returnItem.model';
@@ -76,6 +77,32 @@ class OrderService {
                 }
 
             }
+
+            let org = await Organization.findOne({_id: data.data.organization});
+            let storeLocationEnd = {}
+            if (org.storeDetails) {
+                storeLocationEnd = {
+                    "location": {
+                        "id": org.storeDetails.location._id,
+                        "descriptor": {
+                            "name": org.name
+                        },
+                        "gps": `${org.storeDetails.location.lat},${org.storeDetails.location.long}`,
+                        "address":
+                        {
+                            "locality": `${org.storeDetails.address.locality}`,
+                            "city": `${org.storeDetails.address.city}`,
+                            "area_code": `${org.storeDetails.address.area_code}`,
+                            "state": `${org.storeDetails.address.state}`
+                        }
+                    },
+                    "contact": {
+                        phone: org.storeDetails.supportDetails.mobile,
+                        email: org.storeDetails.supportDetails.email
+                    }
+                }
+            }
+            data.data.storeAddress = storeLocationEnd;
             data.data.createdOn = data.data.createdAt;
 
             console.log('Orderdata---->', data.data.fulfillments);
@@ -636,8 +663,196 @@ class OrderService {
                 order.quote = await this.updateQoute(order.quote, quantity, item);
 
             }
+            if (data.state === 'Accepted') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
 
-            await Fulfillment.findOneAndUpdate({ _id: returnRequest._id }, { request: returnRequest.request, quote_trail: returnRequest.quote_trail });
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
+                updatedFulfillment['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+
+                //1. append item list with this item id and fulfillment id
+                let item = returnRequest.request.tags[0].list.find(x => x.code === 'item_id').value;
+                let quantity = parseInt(returnRequest.request.tags[0].list.find(x => x.code === 'item_quantity').value);
+
+                let itemIndex = order.items.findIndex(x => x.id === item);
+                let itemToBeUpdated = order.items.find(x => x.id === item);
+                itemToBeUpdated.quantity.count = parseInt(itemToBeUpdated.quantity.count) - parseInt(quantity);
+                order.items[itemIndex] = itemToBeUpdated; //Qoute needs to be updated here.
+
+                //get product price
+                let productItem = await Product.findOne({ _id: item });
+
+                let qouteTrail = {
+                    'code': 'quote_trail',
+                    'list':
+                        [
+                            {
+                                'code': 'type',
+                                'value': 'item'
+                            },
+                            {
+                                'code': 'id',
+                                'value': item
+                            },
+                            {
+                                'code': 'currency',
+                                'value': 'INR'
+                            },
+                            {
+                                'code': 'value',
+                                'value': '-' + (productItem.MRP * quantity)
+                            }
+                        ]
+                };
+
+                returnRequest.quote_trail = qouteTrail;
+                updatedFulfillment.tags = [];
+                updatedFulfillment.tags.push(returnRequest.request.tags[0]);
+                updatedFulfillment.tags.push(qouteTrail);
+
+                updatedFulfillment.start = order.storeAddress;
+                updatedFulfillment.end = {
+                    'location': {
+                        'address' : order.billing.address
+                    } 
+                }
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                let itemObject = {
+                    'id': item,
+                    'fulfillment_id': data.id,
+                    'quantity':
+                    {
+                        'count': quantity
+                    }
+                };
+                order.items.push(itemObject);
+
+                //2. append qoute trail
+
+                order.quote = await this.updateQoute(order.quote, quantity, item);
+
+            } 
+            if (data.state === 'Picked') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+
+            }
+            if (data.state === 'Delivered') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+            }
+            if (data.state === 'Pick up Failed') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+            }
+            if (data.state === 'Return Failed') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+            }
+
+            await Fulfillment.findOneAndUpdate({ _id: returnRequest._id }, { request: returnRequest.request });
             // await Fulfillment.findOneAndUpdate({_id:returnRequest._id},{request:returnRequest.request,quote_trail:returnRequest.quote_trail});
             await returnRequest.save();
             // await order.save();
