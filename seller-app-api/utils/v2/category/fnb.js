@@ -239,9 +239,8 @@ export async function mapFnBData(data) {
                 let item = itemSchema({ ...items, org: org }, customGroup, customMenuData)
 
                 productAvailable.push(item)
-
                 for (const customization of customizations) {
-                    let customizationData = customizationSchema(customization, items)
+                    let customizationData = customizationSchema(customization,customizations, items)
                     productAvailable.push(customizationData)
                 }
             }
@@ -826,7 +825,7 @@ function itemSchema(items, customGroup, customMenuData) {
 
 }
 
-function customizationSchema(customizations, item) {
+function customizationSchema(customizations,customizationsData, item) {
     let customizationTag = [];
     customizationTag.push(
         {
@@ -858,18 +857,26 @@ function customizationSchema(customizations, item) {
             }
         )
     }
-    if (customizations.childId) {
-        customizationTag.push(
-            {
-                "code": "child",
-                "list":
-                    [
-                        {
-                            "code": "id",
-                            "value": `${customizations.childId}`
-                        }
-                    ]
-            });
+
+    let customizationChildLists = [];
+    for(const data of customizationsData){
+        if(customizations.parentId === data.parentId && customizations._id === data._id){
+            if(data.childId){
+                customizationChildLists.push({
+                    "code": "id",
+                    "value": `${data.childId}`
+                });
+            }
+        }
+    }
+    if (customizationChildLists && customizationChildLists.length > 0) {
+        customizationChildLists = customizationChildLists.filter((item, index, array) => 
+        array.findIndex(i => i.value === item.value) === index
+      );
+        customizationTag.push({
+            "code": "child",
+            "list":customizationChildLists
+        })
     }
     customizationTag.push(
         {

@@ -79,12 +79,12 @@ class ProductService {
             console.log({ hello: category })
 
             if (!category) {
-                category = {
-                    "name": "Grocery",
-                    "domain": "ONDC:RET10"
-                };
-                //    return false;
-                requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
+                   return false;
+                // category = {
+                //     "name": "F&B",
+                //     "domain": "ONDC:RET11"
+                // };
+                // requestQuery.context.domain = 'ONDC:RET11'; //FIXME: remove this once
             }
 
             //save search request

@@ -242,7 +242,7 @@ export async function mapBPCData(data) {
                 productAvailable.push(item)
                 
                 for(const customization of customizations){
-                    let customizationData = customizationSchema(customization,items)
+                    let customizationData = customizationSchema(customization,customizations, items)
                     productAvailable.push(customizationData)
                 }
             }
@@ -727,7 +727,7 @@ export async function mapBPCDataIncr(data) {
                 productAvailable.push(item)
 
                 for(const customization of customizations){
-                    let customizationData = customizationSchema(customization,items)
+                    let customizationData = customizationSchema(customization,customizations, items)
                     productAvailable.push(customizationData)
                 }
             }
@@ -1099,99 +1099,107 @@ function itemSchemaWithCustomGroup(items,customGroup,customMenuData) {
 
 }
 
-function customizationSchema(customizations,item) {
+function customizationSchema(customizations,customizationsData, item) {
     let customizationTag = [];
     customizationTag.push(
         {
-        "code":"type",
-        "list":
-        [
-            {
-            "code":"type",
-            "value":"customization"
-            }
-        ]
+            "code": "type",
+            "list":
+                [
+                    {
+                        "code": "type",
+                        "value": "customization"
+                    }
+                ]
         }
     );
-    if(customizations.parentId){
+    if (customizations.parentId) {
         customizationTag.push(
             {
-            "code":"parent",
-            "list":
-            [
-                {
-                    "code":"id",
-                    "value":`${customizations.parentId}`
-                },
-                {
-                    "code":"default",
-                    "value":(customizations.default === 'Yes' ?'yes' : 'no')
-                }
-            ]
+                "code": "parent",
+                "list":
+                    [
+                        {
+                            "code": "id",
+                            "value": `${customizations.parentId}`
+                        },
+                        {
+                            "code": "default",
+                            "value": (customizations.default === 'Yes' ? 'yes' : 'no')
+                        }
+                    ]
             }
         )
     }
-    if(customizations.childId){
-        customizationTag.push(
-            {
-            "code":"child",
-            "list":
-            [
-            {
-                "code":"id",
-                "value":`${customizations.childId}`
+
+    let customizationChildLists = [];
+    for(const data of customizationsData){
+        if(customizations.parentId === data.parentId && customizations._id === data._id){
+            if(data.childId){
+                customizationChildLists.push({
+                    "code": "id",
+                    "value": `${data.childId}`
+                });
             }
-            ]
-        });
+        }
+    }
+    if (customizationChildLists && customizationChildLists.length > 0) {
+        customizationChildLists = customizationChildLists.filter((item, index, array) => 
+        array.findIndex(i => i.value === item.value) === index
+      );
+        customizationTag.push({
+            "code": "child",
+            "list":customizationChildLists
+        })
     }
     customizationTag.push(
-      {
-        "code":"veg_nonveg",
-        "list":
-        [
-          {
-            "code": (customizations.vegNonVeg === 'VEG' ?'veg' :(customizations.vegNonVeg === 'NONVEG' ? 'non_veg' : 'egg')) ?? 'NA',
-            "value":"yes"
-          }
-        ]
-      }
+        {
+            "code": "veg_nonveg",
+            "list":
+                [
+                    {
+                        "code": (customizations.vegNonVeg === 'VEG' ? 'veg' : (customizations.vegNonVeg === 'NONVEG' ? 'non_veg' : 'egg')) ?? 'NA',
+                        "value": "yes"
+                    }
+                ]
+        }
     );
-    let data =  {
-        "id":customizations._id,
+    let data = {
+        "id": customizations._id,
         "descriptor":
         {
-          "name":customizations.productName
+            "name": customizations.productName
         },
         "quantity":
         {
-          "unitized":
-          {
-            "measure":
+            "unitized":
             {
-              "unit":customizations.UOM ?? 'NA',
-              "value":`${customizations.UOMValue}` ?? 'NA'
+                "measure":
+                {
+                    "unit": customizations.UOM ?? 'NA',
+                    "value": `${customizations.UOMValue}` ?? 'NA'
+                }
+            },
+            "available":
+            {
+                "count": `${(customizations?.quantity) ? 99 : 0}`
+            },
+            "maximum":
+            {
+                "count": `${(customizations?.quantity) ? customizations?.maxAllowedQty : 0}`
             }
-          },
-          "available":
-          {
-              "count": `${(customizations?.quantity) ? 99 : 0}`
-          },
-          "maximum":
-          {
-              "count": `${(customizations?.quantity) ? customizations?.maxAllowedQty : 0}`
-          }
         },
         "price":
         {
-          "currency":"INR",
-          "value":`${customizations.MRP}`,
-          "maximum_value":`${customizations.MRP}`
+            "currency": "INR",
+            "value": `${customizations.MRP}`,
+            "maximum_value": `${customizations.MRP}`
         },
-        "category_id":item.productCategory ?? "NA",
-        "related":true,
-        "tags":customizationTag
-      };
-      return data;
+        "category_id": item.productCategory ?? "NA",
+        "related": true,
+        "tags": customizationTag
+    };
+    return data;
 }
 
 function getcategoryIds(items,customMenuData){
