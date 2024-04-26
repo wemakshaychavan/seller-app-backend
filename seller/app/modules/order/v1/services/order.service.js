@@ -13,6 +13,7 @@ import BadRequestParameterError from '../../../../lib/errors/bad-request-paramet
 import { uuid } from 'uuidv4';
 import FulfillmentHistory from '../../models/fulfillmentsHistory.model'
 import { OrderFulfillmentStatusMapping } from '../../../../lib/utils/OrderFulfillmentStatusMapping';
+import moment from "moment"
 
 class OrderService {
     async create(data) {
@@ -78,7 +79,7 @@ class OrderService {
 
             }
 
-            let org = await Organization.findOne({_id: data.data.organization});
+            let org = await Organization.findOne({ _id: data.data.organization });
             let storeLocationEnd = {}
             if (org.storeDetails) {
                 storeLocationEnd = {
@@ -536,14 +537,14 @@ class OrderService {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
                 returnRequest.request.state = {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
 
@@ -553,7 +554,7 @@ class OrderService {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //TODO: HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
                 updatedFulfillment['@ondc/org/provider_name'] = 'LSP courier 1';
@@ -729,10 +730,25 @@ class OrderService {
                 updatedFulfillment.tags.push(qouteTrail);
 
                 updatedFulfillment.start = order.storeAddress;
+
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    }
+                }
                 updatedFulfillment.end = {
                     'location': {
-                        'address' : order.billing.address
-                    } 
+                        'address': order.billing.address
+                    }
                 }
                 order.fulfillments[foundIndex] = updatedFulfillment;
                 let itemObject = {
@@ -749,7 +765,7 @@ class OrderService {
 
                 order.quote = await this.updateQoute(order.quote, quantity, item);
 
-            } 
+            }
             if (data.state === 'Picked') {
                 returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
                 returnRequest.state = {
@@ -774,7 +790,18 @@ class OrderService {
                 };
                 let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
                 order.fulfillments[foundIndex] = updatedFulfillment;
-
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+                const startTimeStamp = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                updatedFulfillment.start = {
+                    'location': {
+                        'address': order.billing.address
+                    },
+                    'time': {
+                        'timestamp': startTimeStamp
+                    }
+                }
+                updatedFulfillment.end = order.storeAddress;
             }
             if (data.state === 'Delivered') {
                 returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
@@ -800,19 +827,43 @@ class OrderService {
                 };
                 let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
                 order.fulfillments[foundIndex] = updatedFulfillment;
+                let returnFulfillment = order.fulfillments.find((data) => { return data.type === 'Return'; });
+
+                const currentMillis = Date.now();
+                const currentTime = moment(currentMillis);
+
+                const currentTimeStamp = currentTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.end = order.storeAddress
+
+                updatedFulfillment.end.time = {
+                    'timestamp': currentTimeStamp
+                }
+                updatedFulfillment.start = {
+                    'location': {
+                        'address': order.billing.address
+                    },
+                    'time': {
+                        'timestamp': returnFulfillment?.start?.time?.timestamp ?? ''
+                    }
+                }
+
+
             }
             if (data.state === 'Pick up Failed') {
                 returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
                 returnRequest.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Pick_Failed'
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
                 returnRequest.request.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Pick_Failed'
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
 
@@ -820,24 +871,43 @@ class OrderService {
                 updatedFulfillment.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Pick_Failed'
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
                 let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
                 order.fulfillments[foundIndex] = updatedFulfillment;
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    },
+                    'timestamp': startTimeRange
+
+                }
             }
             if (data.state === 'Return Failed') {
                 returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
                 returnRequest.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Failed'
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
                 returnRequest.request.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Failed'
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
 
@@ -845,11 +915,28 @@ class OrderService {
                 updatedFulfillment.state = {
                     'descriptor':
                     {
-                        'code': 'Return_Failed'
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
                     }
                 };
                 let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
                 order.fulfillments[foundIndex] = updatedFulfillment;
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    },
+                    'timestamp': startTimeRange
+
+                }
             }
 
             await Fulfillment.findOneAndUpdate({ _id: returnRequest._id }, { request: returnRequest.request });
