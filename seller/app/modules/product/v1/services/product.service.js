@@ -225,6 +225,8 @@ class ProductService {
         try {
             let query={};
             let orgs;
+            const subCategory =subCategory;
+            const itemSearch =itemSearch;
             if(params.city!=='*'){
                 const cityCode = params.city.split(':')[1];
                 let cityData = MappedCity(cityCode);
@@ -245,6 +247,12 @@ class ProductService {
                 // query.type = 'item'; // filter to fetch only items
                 if(category){
                     query.productCategory ={ $regex: '.*' + category + '.*' };
+                }
+                if(params.subCategory){
+                    query.productSubcategory1 ={ $regex: '.*' + params.subCategory + '.*' };
+                }
+                if(params.item){
+                    query.productName ={ $regex: '.*' + params.item + '.*' };
                 }
                 if(params.city==='*'){
                     query.updatedAt = {
