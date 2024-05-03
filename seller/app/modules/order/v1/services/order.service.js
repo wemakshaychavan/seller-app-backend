@@ -12,7 +12,7 @@ import { RETURN_REASONS } from '../../../../lib/utils/constants';
 import BadRequestParameterError from '../../../../lib/errors/bad-request-parameter.error';
 import { uuid } from 'uuidv4';
 import FulfillmentHistory from '../../models/fulfillmentsHistory.model'
-import { OrderFulfillmentStatusMapping } from '../../../../lib/utils/OrderFulfillmentStatusMapping';
+import { DeliveryFulfillmentStatusMapping, RtoFulfillmentStatusMapping } from '../../../../lib/utils/OrderFulfillmentStatusMapping';
 import moment from "moment"
 
 class OrderService {
@@ -304,37 +304,200 @@ class OrderService {
         try {
             let order = await Order.findOne({ orderId: orderId }).lean();
             let fulfillment = await Fulfillment.findOne({ id: payload.fulfillmentId, order: order._id }).lean();
-            //check for fulfillment type 
 
-            if (fulfillment.request.type !== 'Delivery') {
-                throw new ConflictError(MESSAGES.STATUS_UPDATE_PREVENT)
+            //check for fulfillment type 
+            if (!['Delivery', 'RTO'].includes(fulfillment.request.type)) {
+                throw new ConflictError(MESSAGES.STATUS_UPDATE_PREVENT);
             }
             //check for order state sequence check
 
-            const oldStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === fulfillment.request.state.descriptor.code);
-            const newStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === payload.newState);
+
+            const oldStatusData = (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') ? DeliveryFulfillmentStatusMapping : RtoFulfillmentStatusMapping).find((obj) => obj.fulfillmentStatus === fulfillment.request.state.descriptor.code);
+            const newStatusData = (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') ? DeliveryFulfillmentStatusMapping : RtoFulfillmentStatusMapping).find((obj) => obj.fulfillmentStatus === payload.newState);
+
             if (oldStatusData.seq > newStatusData.seq) {
                 throw new ConflictError(MESSAGES.STATUS_UPDATE_NOT_ALLOWED)
             }
 
-            //update fulfillment state
+            if (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState !== 'RTO-Initiated')) {
 
-            await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": payload.newState })
+                //update fulfillment state
 
-            //update fulfillments(attached with orders)
+                await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": payload.newState })
 
-            let updatedFulfillment = order.fulfillments.find(x => x.id == payload.fulfillmentId);
+                //update fulfillments(attached with orders)
 
-            updatedFulfillment.state = {
-                'descriptor':
-                {
-                    'code': payload.newState
+                let updatedFulfillment = order.fulfillments.find(x => x.id == payload.fulfillmentId);
+
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': payload.newState
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == payload.fulfillmentId);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                await Order.findOneAndUpdate({ orderId: orderId }, { fulfillments: order.fulfillments, state: newStatusData.orderStatus });
+
+            } else if (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') {
+
+                let rtoRequest = new Fulfillment();
+
+                rtoRequest.id = uuid();
+                rtoRequest.request = {
+                    'type': 'RTO',
+                    'state':
+                    {
+                        'descriptor':
+                        {
+                            'code': payload.newState
+                        }
+                    }
+                };
+
+                rtoRequest.organization = order.organization;
+                rtoRequest.order = order._id;
+                rtoRequest.transactionId = order.transactionId;
+                await rtoRequest.save();
+
+                let rtoQouteTrails = [];
+                let newItemsWithNewFulfillmentId = [];
+                for (let itemToBeUpdated of order.items) {
+                    //get product price
+                    let productItem = await Product.findOne({ _id: itemToBeUpdated.id }).lean();
+                    rtoQouteTrails = [
+                        {
+                            'code': 'quote_trail',
+                            'list':
+                                [
+                                    {
+                                        'code': 'type',
+                                        'value': 'item'
+                                    },
+                                    {
+                                        'code': 'id',
+                                        'value': itemToBeUpdated.id
+                                    },
+                                    {
+                                        'code': 'currency',
+                                        'value': 'INR'
+                                    },
+                                    {
+                                        'code': 'value',
+                                        'value': '-' + (productItem.MRP * itemToBeUpdated.quantity.count)
+                                    }
+                                ]
+                        }, {
+                            'code': 'quote_trail',
+                            'list':
+                                [
+                                    {
+                                        'code': 'type',
+                                        'value': 'delivery'
+                                    },
+                                    {
+                                        'code': 'id',
+                                        'value': rtoRequest.id
+                                    },
+                                    {
+                                        'code': 'currency',
+                                        'value': 'INR'
+                                    },
+                                    {
+                                        'code': 'value',
+                                        'value': "50" //Hard coded for now
+                                    }
+                                ]
+                        },
+                    ]
+                    const newItems = JSON.parse(JSON.stringify(itemToBeUpdated));
+                    let oldItems = JSON.parse(JSON.stringify(itemToBeUpdated));
+                    oldItems.fulfillment_id = rtoRequest.id;
+                    newItemsWithNewFulfillmentId.push(oldItems);
+                    newItems.quantity.count = 0;
+                    newItemsWithNewFulfillmentId.push(newItems);
                 }
-            };
-            let foundIndex = order.fulfillments.findIndex(x => x.id == payload.fulfillmentId);
-            order.fulfillments[foundIndex] = updatedFulfillment;
-            await Order.findOneAndUpdate({ orderId: orderId }, { fulfillments: order.fulfillments, state: newStatusData.orderStatus });
+                order.items = newItemsWithNewFulfillmentId;
+                let rtoFulfillment = {}
+                rtoFulfillment = {
+                    'id': rtoRequest.id,
+                    'type': 'RTO',
+                    'state':
+                    {
+                        'descriptor':
+                        {
+                            'code': payload.newState
+                        }
+                    }
+                };
 
+                rtoFulfillment.organization = order.organization;
+                rtoFulfillment.order = order._id;
+                rtoFulfillment.tags = rtoQouteTrails;
+
+                let deliveryFulfillment = order.fulfillments.find((data) => { return data.type === 'Delivery'; });
+                //update delivery fulfillment state to cancelloed
+                await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": newStatusData.orderStatus })
+                // //update fulfillments(attached with orders)
+                deliveryFulfillment.tags =
+                    [
+                        {
+                            'code': 'cancel_request',
+                            'list':
+                                [
+                                    {
+                                        "code": "rto_id",
+                                        "value": rtoRequest.id
+                                    },
+
+                                    {
+                                        'code': 'reason_id',
+                                        'value': payload.reasonId
+                                    },
+                                    {
+                                        'code': 'initiated_by',
+                                        'value': 'ref-app-seller-staging-v2.ondc.org' //TODO: take it from ENV
+                                    }
+                                ]
+                        },
+                        {
+                            'code': 'precancel_state',
+                            'list':
+                                [
+                                    {
+                                        'code': 'fulfillment_state',
+                                        'value': deliveryFulfillment.state.descriptor.code
+                                    },
+                                    {
+                                        'code': 'updated_at',
+                                        'value': order.updatedAt
+                                    }
+                                ]
+                        }
+                    ];
+                deliveryFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': newStatusData.orderStatus
+                    }
+                };
+                order.fulfillments = [];
+                order.fulfillments.push(rtoFulfillment);
+                order.fulfillments.push(deliveryFulfillment);
+
+                await Order.findOneAndUpdate({ orderId: orderId }, { items: order.items, fulfillments: order.fulfillments, cancellation_reason_id: payload.reasonId, state: newStatusData.orderStatus });
+
+                //notify client to update order status ready to ship to logistics
+                let httpRequest = new HttpRequest(
+                    mergedEnvironmentConfig.intraServiceApiEndpoints.client,
+                    '/api/client/status/cancel',
+                    'POST',
+                    { data: order },
+                    {}
+                );
+                await httpRequest.send();
+
+            }
             //create new fulfillment history
 
             let fulfillmentHistory = {
