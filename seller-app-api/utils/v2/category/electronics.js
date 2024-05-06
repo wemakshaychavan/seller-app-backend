@@ -282,65 +282,85 @@ export async function mapElectronicsData(data) {
             return fulfillment;
         })
         orgFulfillments = orgFulfillments.filter((data)=> data.id !== '3')
-        bppProviders.push({
-            "id": org._id,
-            "descriptor": {
-                "name": org.name,
-                "symbol": org.storeDetails.logo,
-                "short_desc": org.name,//TODO: mark this for development
-                "long_desc": org.name,
-                "images": [
-                    org.storeDetails.logo
-                ]
-            },
-            "time":
+        let providerObj = {};
+        if (org.storeDetails.storeTiming.status === 'disabled') {
+            providerObj = {
+                "id": org._id,
+                "locations": [
+                    {
+                        "id": org.storeDetails?.location._id ?? "0", //org.storeDetails.location._id
+                        "time":
+                        {
+                            "label": "disable",
+                            "timestamp": data.context.timestamp
+                        }
+                    }
+                ],
+            }
+        } else if (org.storeDetails.storeTiming.status === 'enabled') {
+            providerObj = {
+                "id": org._id,
+                "descriptor": {
+                    "name": org.name,
+                    "symbol": org.storeDetails.logo,
+                    "short_desc": org.name,//TODO: mark this for development
+                    "long_desc": org.name,
+                    "images": [
+                        org.storeDetails.logo
+                    ]
+                },
+                "time":
                 {
                     "label": "enable",
                     "timestamp": data.context.timestamp
                 },
-            "categories": categories,
-            "locations": [
-                {
-                    "id": org.storeDetails?.location._id ?? "0", //org.storeDetails.location._id
-                    "gps": `${org.storeDetails?.location?.lat ?? "0"},${org.storeDetails?.location?.long ?? "0"}`,
-                    "address": {
-                        "city": org.storeDetails?.address?.city??"NA",
-                        "state": org.storeDetails?.address?.state??"NA",
-                        "area_code": org.storeDetails?.address?.area_code??"NA",
-                        "street": org.storeDetails?.address?.street??"NA",
-                        "locality":org.storeDetails?.address?.locality??"NA"
-                    },
-                    "time":
+                "categories": categories,
+                "@ondc/org/fssai_license_no": org.FSSAI,
+                "locations": [
+                    {
+                        "id": org.storeDetails?.location._id ?? "0", //org.storeDetails.location._id
+                        "gps": `${org.storeDetails?.location?.lat ?? "0"},${org.storeDetails?.location?.long ?? "0"}`,
+                        "address": {
+                            "city": org.storeDetails?.address?.city ?? "NA",
+                            "state": org.storeDetails?.address?.state ?? "NA",
+                            "area_code": org.storeDetails?.address?.area_code ?? "NA",
+                            "street": org.storeDetails?.address?.street ?? "NA",
+                            "locality": org.storeDetails?.address?.locality ?? "NA"
+                        },
+                        "time":
                         {
-                            "label":"enable",
-                            "timestamp":data.context.timestamp,
+                            "label": "enable",
+                            "timestamp": data.context.timestamp,
                             "days": org.storeDetails?.storeTiming?.days?.join(",") ??
                                 "1,2,3,4,5,6,7",
                             "schedule": {
-                                "holidays": org.storeDetails?.storeTiming?.schedule?.holidays ?? [],
+                                "holidays": org.storeDetails?.storeTiming?.holidays ?? [],
                             },
                             "range": {
                                 "start": org.storeDetails?.storeTiming?.range?.start?.replace(':', '') ?? "0000",
                                 "end": org.storeDetails?.storeTiming?.range?.end?.replace(':', '') ?? "2300"
                             }
                         },
-                    "circle"://TODO: @akshay this will be deprecated in v1.2.0 phase 2,//Note: current values are hard coded for now
+                        "circle"://TODO: @akshay this will be deprecated in v1.2.0 phase 2,//Note: current values are hard coded for now
                         {
                             "gps": `${org.storeDetails?.location?.lat ?? "0"},${org.storeDetails?.location?.long ?? "0"}`,
                             "radius": org.storeDetails?.radius ??
-                                {
-                                    "unit": "km",
-                                    "value": "3"
-                                }
+                            {
+                                "unit": "km",
+                                "value": "3"
+                            }
                         }
-                }
-            ],
-            "ttl": "PT24H",
-            "items": productAvailable,
-            "fulfillments":orgFulfillments,
-            "tags": tags,
-            //"@ondc/org/fssai_license_no": org.FSSAI
-        })
+                    }
+                ],
+                "ttl": "PT24H",
+                "items": productAvailable,
+                "fulfillments": orgFulfillments,
+                "tags": tags,
+                //"@ondc/org/fssai_license_no": org.FSSAI
+            }
+        }
+
+        bppProviders.push(providerObj)
         let serviceabilityType = ''
         let serviceabilityUnit = ''
         let serviceabilityValue = ''
@@ -466,27 +486,39 @@ export async function mapElectronicsData(data) {
         context.bpp_id = BPP_ID
         context.bpp_uri = BPP_URI
         context.action = 'on_search'
-        const schema = {
-            "context": {...context},
-            "message": {
-                "catalog": {
-                    "bpp/fulfillments"://TODO: mark this for development- set provider level
-                        [
-                            {
-                                "id": "1",
-                                "type": "Delivery"
-                            },
-                            {
-                                "id": "2",
-                                "type": "Self-Pickup"
-                            },
-                            {
-                                "id": "3",
-                                "type": "Delivery and Self-Pickup"
-                            }
-                        ],
-                    "bpp/descriptor": bppDetails,
-                    "bpp/providers": bppProviders
+        let schema = {};
+        if (org.storeDetails.storeTiming.status === 'disabled') {
+            schema = {
+                "context": { ...context },
+                "message": {
+                    "catalog": {
+                        "bpp/providers": bppProviders
+                    }
+                }
+            }
+        } else if (org.storeDetails.storeTiming.status === 'enabled') {
+            schema = {
+                "context": { ...context },
+                "message": {
+                    "catalog": {
+                        "bpp/fulfillments"://TODO: mark this for development- set provider level
+                            [
+                                {
+                                    "id": "1",
+                                    "type": "Delivery"
+                                },
+                                {
+                                    "id": "2",
+                                    "type": "Self-Pickup"
+                                },
+                                {
+                                    "id": "3",
+                                    "type": "Delivery and Self-Pickup"
+                                }
+                            ],
+                        "bpp/descriptor": bppDetails,
+                        "bpp/providers": bppProviders
+                    }
                 }
             }
         }
