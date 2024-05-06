@@ -2812,7 +2812,7 @@ class OndcService {
 
 
     async notifyStoreUpdate(data) {
-        if (data?.storeTiming?.status === 'closed' || data?.storeTiming?.status === 'disabled') {
+        if (data?.updateType === 'closed' || data?.updateType === 'disabled') {
             let category = domainNameSpace.find((cat) => {
                 return cat.name === data.category
             })

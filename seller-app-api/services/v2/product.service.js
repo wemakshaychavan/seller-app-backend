@@ -79,12 +79,14 @@ class ProductService {
             console.log({ hello: category })
 
             if (!category) {
-                   return false;
+
                 // category = {
-                //     "name": "F&B",
-                //     "domain": "ONDC:RET11"
+                //     "name": "Grocery",
+                //     "domain": "ONDC:RET10"
                 // };
-                // requestQuery.context.domain = 'ONDC:RET11'; //FIXME: remove this once
+                   return false;
+                // requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
+
             }
 
             //save search request
@@ -124,6 +126,10 @@ class ProductService {
                 console.log({ cityCode,subCategory,item })
 
 
+                const cityCode = requestQuery?.context?.city ?? '';
+                const subCategory = requestQuery?.message?.intent?.category?.id ?? '';
+                const item = requestQuery?.message?.intent?.item?.descriptor?.name ?? '';
+                console.log({ cityCode,subCategory,item })
                 let httpRequest = new HttpRequest(
                     serverUrl,
                     `/api/v1/products/search/increamentalPull/${category.name}?city=${cityCode}&subCategory=${subCategory}&item=${item}`, //TODO: allow $like query
