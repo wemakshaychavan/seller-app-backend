@@ -143,15 +143,15 @@ class OfferService {
     async deleteOffer(currentUser, offerId) {
         try {
             let offerExist = await Offer.findOne({
-                _id: id,
+                _id: offerId,
                 organization: currentUser.organization,
             });
             if (!offerExist) {
                 throw new NoRecordFoundError(MESSAGES.OFFER_NOT_EXISTS);
             }
             const deletedOffer = await Offer.deleteOne({ _id: offerId, organization: currentUser.organization });
-            await OfferBenefit.deleteOne({ _id: offerId, organization: currentUser.organization });
-            await OfferQualifier.deleteOne({ _id: offerId, organization: currentUser.organization });
+            await OfferBenefit.deleteOne({ offer: offerId, organization: currentUser.organization });
+            await OfferQualifier.deleteOne({ offer: offerId, organization: currentUser.organization });
             return { success: true, deletedOffer };
         } catch (err) {
             console.log(`[OfferService] [deleteCustomizations] Error - ${currentUser.organization}`, err);
