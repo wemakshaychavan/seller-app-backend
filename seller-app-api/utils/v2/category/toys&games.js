@@ -344,8 +344,7 @@ export async function mapToysnGamesData(data) {
                         "circle"://TODO: @akshay this will be deprecated in v1.2.0 phase 2,//Note: current values are hard coded for now
                         {
                             "gps": `${org.storeDetails?.location?.lat ?? "0"},${org.storeDetails?.location?.long ?? "0"}`,
-                            "radius": org.storeDetails?.radius ??
-                            {
+                            "radius":   {
                                 "unit": "km",
                                 "value": "3"
                             }
