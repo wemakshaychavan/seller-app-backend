@@ -79,12 +79,14 @@ class ProductService {
             console.log({ hello: category })
 
             if (!category) {
+
                 // category = {
                 //     "name": "Grocery",
                 //     "domain": "ONDC:RET10"
                 // };
                    return false;
                 // requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
+
             }
 
             //save search request
@@ -118,6 +120,11 @@ class ProductService {
 
             if (searchRequest.type === 'fullpull') {
                 console.log({ seaa: searchRequest.type })
+                const cityCode = requestQuery?.context?.city ?? '';
+                const subCategory = requestQuery?.message?.intent?.category?.id ?? '';
+                const item = requestQuery?.message?.intent?.item?.descriptor?.name ?? '';
+                console.log({ cityCode,subCategory,item })
+
 
                 const cityCode = requestQuery?.context?.city ?? '';
                 const subCategory = requestQuery?.message?.intent?.category?.id ?? '';

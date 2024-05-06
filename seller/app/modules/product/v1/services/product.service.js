@@ -223,6 +223,7 @@ class ProductService {
 
     async searchIncrementalPull(params,category) {
         try {
+            console.log({PARAMS:params});   
             let query={};
             let orgs;
             const subCategory =subCategory;
