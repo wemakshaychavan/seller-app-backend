@@ -377,8 +377,18 @@ export async function mapBPCData(data) {
             serviceabilityValue = value
         } else if (org.storeDetails.location_availability === 'radius') {
             serviceabilityType = "10"
-            serviceabilityUnit = org.storeDetails?.radius?.unit
-            serviceabilityValue = org.storeDetails?.radius?.value
+            if(org.storeDetails?.radius?.value){
+                let unit = parseInt(org.storeDetails?.radius?.value)
+                if(unit>50){
+                    serviceabilityValue = '10'
+                }else{
+                    serviceabilityValue = org.storeDetails?.radius?.value??'10'
+                }
+            }else{
+                serviceabilityValue = org.storeDetails?.radius?.value??'10'
+            }
+            serviceabilityUnit = org.storeDetails?.radius?.unit??'km'
+
         }
 
         for (const tagCat of tagCatList) {
