@@ -48,6 +48,9 @@ const MESSAGES = {
     CUSTOMIZATION_GROUP_NOT_EXISTS: 'We couldn\'t find the customization group with given details',
     OFFER_NOT_EXISTS: 'We couldn\'t find the offer with given details',
     OFFER_CODE_EXISTS: 'An Offer with the given offerId already exists',
+    STATUS_UPDATE_NOT_ALLOWED : 'You can not update fulfillment status',
+    STATUS_UPDATE_PREVENT : 'Unable to update fulfillment status for given type'
+
 
 };
 

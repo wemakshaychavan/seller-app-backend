@@ -97,6 +97,7 @@ class ProductService {
                     productObj.purchasePrice = productVariant.purchasePrice;
                     productObj.HSNCode = productVariant.HSNCode;
                     productObj.images = productVariant.images;
+                    productObj.backImage = productVariant.backImage;
                     await Product.updateOne({_id:productVariant._id,organization:currentUser.organization},productObj);
                     let varientAttributes = productVariant.varientAttributes;
                     let attributeObj = {
@@ -222,8 +223,11 @@ class ProductService {
 
     async searchIncrementalPull(params,category) {
         try {
+            console.log({PARAMS:params});   
             let query={};
             let orgs;
+            const subCategory =subCategory;
+            const itemSearch =itemSearch;
             if(params.city!=='*'){
                 const cityCode = params.city.split(':')[1];
                 let cityData = MappedCity(cityCode);
@@ -244,6 +248,12 @@ class ProductService {
                 // query.type = 'item'; // filter to fetch only items
                 if(category){
                     query.productCategory ={ $regex: '.*' + category + '.*' };
+                }
+                if(params.subCategory){
+                    query.productSubcategory1 ={ $regex: '.*' + params.subCategory + '.*' };
+                }
+                if(params.item){
+                    query.productName ={ $regex: '.*' + params.item + '.*' };
                 }
                 if(params.city==='*'){
                     query.updatedAt = {
@@ -306,7 +316,9 @@ class ProductService {
                         let menuObj ={
                             id:menu._id,
                             name:menu.name,
-                            seq:menu.seq
+                            seq:menu.seq,
+                            shortDescription:menu.shortDescription,
+                            longDescription:menu.longDescription
                         };
                         for(const image of menu.images){
                             let imageData = await s3.getSignedUrlForRead({path:image});
@@ -534,6 +546,8 @@ class ProductService {
                 {itemId:itemId},
                 {}
             );
+
+            httpRequest.send();
 
             return;
 

@@ -273,7 +273,7 @@ class OrganizationService {
             category : store.category
         };
         if(store.storeTiming?.status === 'disabled'){
-            requestData.updateType = 'disable';
+            requestData.updateType = 'disabled';
             let httpRequest = new HttpRequest(
                 mergedEnvironmentConfig.intraServiceApiEndpoints.client,
                 '/api/v2/client/status/storeUpdate',

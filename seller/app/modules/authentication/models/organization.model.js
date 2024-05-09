@@ -35,7 +35,7 @@ const organizationSchema = new mongoose.Schema({ //Users who has login ability s
         categories: {type:Object},
         category: {type:String},
         logo: {type:String},
-        location: new mongoose.Schema({lat:{type:Number},long:{type:Number}},{ _id: true }),
+        location: {lat:{type:Number},long:{type:Number},_id:{ type: String }},
         locationAvailabilityPANIndia:{type:Boolean},
         location_availability:{type:String},
         city:{type:Object},
@@ -58,7 +58,9 @@ const organizationSchema = new mongoose.Schema({ //Users who has login ability s
         storeTiming:{type:Object},
         radius:{type:Object},
         logisticsBppId:{type:String},
-        logisticsDeliveryType:{type:String}
+        logisticsDeliveryType:{type:String},
+        deliveryTime: {type:String},
+        onNetworkLogistics:{type:Boolean}
     },
     createdBy:{type:String}
 },{  
@@ -85,6 +87,16 @@ const organizationSchema = new mongoose.Schema({ //Users who has login ability s
 //         }
 //     next();
 // });
+
+// Define pre-save hook to set location equal to _id
+organizationSchema.pre('save', function(next) {
+    this.storeDetails.location = { // Set location equal to _id
+        _id: this._id,
+        lat: this.storeDetails.location.lat,
+        long: this.storeDetails.location.long
+    };  
+    next();
+});
 
 organizationSchema.index({name:1,shortCode:1}, {unique: false});
 const Organization = mongoose.model('Organization',organizationSchema);
