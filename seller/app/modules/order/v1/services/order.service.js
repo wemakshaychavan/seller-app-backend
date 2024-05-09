@@ -1,5 +1,6 @@
 import Order from '../../models/order.model';
 import Fulfillment from '../../models/fulfillments.model';
+import Organization from '../../../authentication/models/organization.model'
 import Product from '../../../product/models/product.model';
 import ProductCustomization from '../../../product/models/productCustomization.model';
 import ReturnItem from '../../models/returnItem.model';
@@ -11,7 +12,8 @@ import { RETURN_REASONS } from '../../../../lib/utils/constants';
 import BadRequestParameterError from '../../../../lib/errors/bad-request-parameter.error';
 import { uuid } from 'uuidv4';
 import FulfillmentHistory from '../../models/fulfillmentsHistory.model'
-import { OrderFulfillmentStatusMapping } from '../../../../lib/utils/OrderFulfillmentStatusMapping';
+import { DeliveryFulfillmentStatusMapping, RtoFulfillmentStatusMapping } from '../../../../lib/utils/OrderFulfillmentStatusMapping';
+import moment from "moment"
 
 class OrderService {
     async create(data) {
@@ -76,6 +78,32 @@ class OrderService {
                 }
 
             }
+
+            let org = await Organization.findOne({ _id: data.data.organization });
+            let storeLocationEnd = {}
+            if (org.storeDetails) {
+                storeLocationEnd = {
+                    "location": {
+                        "id": org.storeDetails.location._id,
+                        "descriptor": {
+                            "name": org.name
+                        },
+                        "gps": `${org.storeDetails.location.lat},${org.storeDetails.location.long}`,
+                        "address":
+                        {
+                            "locality": `${org.storeDetails.address.locality}`,
+                            "city": `${org.storeDetails.address.city}`,
+                            "area_code": `${org.storeDetails.address.area_code}`,
+                            "state": `${org.storeDetails.address.state}`
+                        }
+                    },
+                    "contact": {
+                        phone: org.storeDetails.supportDetails.mobile,
+                        email: org.storeDetails.supportDetails.email
+                    }
+                }
+            }
+            data.data.storeAddress = storeLocationEnd;
             data.data.createdOn = data.data.createdAt;
 
             console.log('Orderdata---->', data.data.fulfillments);
@@ -276,37 +304,200 @@ class OrderService {
         try {
             let order = await Order.findOne({ orderId: orderId }).lean();
             let fulfillment = await Fulfillment.findOne({ id: payload.fulfillmentId, order: order._id }).lean();
-            //check for fulfillment type 
 
-            if (fulfillment.request.type !== 'Delivery') {
-                throw new ConflictError(MESSAGES.STATUS_UPDATE_PREVENT)
+            //check for fulfillment type 
+            if (!['Delivery', 'RTO'].includes(fulfillment.request.type)) {
+                throw new ConflictError(MESSAGES.STATUS_UPDATE_PREVENT);
             }
             //check for order state sequence check
 
-            const oldStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === fulfillment.request.state.descriptor.code);
-            const newStatusData = OrderFulfillmentStatusMapping.find((obj) => obj.fulfillmentStatus === payload.newState);
+
+            const oldStatusData = (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') ? DeliveryFulfillmentStatusMapping : RtoFulfillmentStatusMapping).find((obj) => obj.fulfillmentStatus === fulfillment.request.state.descriptor.code);
+            const newStatusData = (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') ? DeliveryFulfillmentStatusMapping : RtoFulfillmentStatusMapping).find((obj) => obj.fulfillmentStatus === payload.newState);
+
             if (oldStatusData.seq > newStatusData.seq) {
                 throw new ConflictError(MESSAGES.STATUS_UPDATE_NOT_ALLOWED)
             }
 
-            //update fulfillment state
+            if (payload.fulfillmentType === 'Delivery' || (payload.fulfillmentType === 'RTO' && payload.newState !== 'RTO-Initiated')) {
 
-            await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": payload.newState })
+                //update fulfillment state
 
-            //update fulfillments(attached with orders)
+                await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": payload.newState })
 
-            let updatedFulfillment = order.fulfillments.find(x => x.id == payload.fulfillmentId);
+                //update fulfillments(attached with orders)
 
-            updatedFulfillment.state = {
-                'descriptor':
-                {
-                    'code': payload.newState
+                let updatedFulfillment = order.fulfillments.find(x => x.id == payload.fulfillmentId);
+
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': payload.newState
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == payload.fulfillmentId);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                await Order.findOneAndUpdate({ orderId: orderId }, { fulfillments: order.fulfillments, state: newStatusData.orderStatus });
+
+            } else if (payload.fulfillmentType === 'RTO' && payload.newState === 'RTO-Initiated') {
+
+                let rtoRequest = new Fulfillment();
+
+                rtoRequest.id = uuid();
+                rtoRequest.request = {
+                    'type': 'RTO',
+                    'state':
+                    {
+                        'descriptor':
+                        {
+                            'code': payload.newState
+                        }
+                    }
+                };
+
+                rtoRequest.organization = order.organization;
+                rtoRequest.order = order._id;
+                rtoRequest.transactionId = order.transactionId;
+                await rtoRequest.save();
+
+                let rtoQouteTrails = [];
+                let newItemsWithNewFulfillmentId = [];
+                for (let itemToBeUpdated of order.items) {
+                    //get product price
+                    let productItem = await Product.findOne({ _id: itemToBeUpdated.id }).lean();
+                    rtoQouteTrails = [
+                        {
+                            'code': 'quote_trail',
+                            'list':
+                                [
+                                    {
+                                        'code': 'type',
+                                        'value': 'item'
+                                    },
+                                    {
+                                        'code': 'id',
+                                        'value': itemToBeUpdated.id
+                                    },
+                                    {
+                                        'code': 'currency',
+                                        'value': 'INR'
+                                    },
+                                    {
+                                        'code': 'value',
+                                        'value': '-' + (productItem.MRP * itemToBeUpdated.quantity.count)
+                                    }
+                                ]
+                        }, {
+                            'code': 'quote_trail',
+                            'list':
+                                [
+                                    {
+                                        'code': 'type',
+                                        'value': 'delivery'
+                                    },
+                                    {
+                                        'code': 'id',
+                                        'value': rtoRequest.id
+                                    },
+                                    {
+                                        'code': 'currency',
+                                        'value': 'INR'
+                                    },
+                                    {
+                                        'code': 'value',
+                                        'value': "50" //Hard coded for now
+                                    }
+                                ]
+                        },
+                    ]
+                    const newItems = JSON.parse(JSON.stringify(itemToBeUpdated));
+                    let oldItems = JSON.parse(JSON.stringify(itemToBeUpdated));
+                    oldItems.fulfillment_id = rtoRequest.id;
+                    newItemsWithNewFulfillmentId.push(oldItems);
+                    newItems.quantity.count = 0;
+                    newItemsWithNewFulfillmentId.push(newItems);
                 }
-            };
-            let foundIndex = order.fulfillments.findIndex(x => x.id == payload.fulfillmentId);
-            order.fulfillments[foundIndex] = updatedFulfillment;
-            await Order.findOneAndUpdate({ orderId: orderId }, { fulfillments: order.fulfillments, state: newStatusData.orderStatus });
+                order.items = newItemsWithNewFulfillmentId;
+                let rtoFulfillment = {}
+                rtoFulfillment = {
+                    'id': rtoRequest.id,
+                    'type': 'RTO',
+                    'state':
+                    {
+                        'descriptor':
+                        {
+                            'code': payload.newState
+                        }
+                    }
+                };
 
+                rtoFulfillment.organization = order.organization;
+                rtoFulfillment.order = order._id;
+                rtoFulfillment.tags = rtoQouteTrails;
+
+                let deliveryFulfillment = order.fulfillments.find((data) => { return data.type === 'Delivery'; });
+                //update delivery fulfillment state to cancelloed
+                await Fulfillment.updateOne({ id: payload.fulfillmentId }, { "request.state.descriptor.code": newStatusData.orderStatus })
+                // //update fulfillments(attached with orders)
+                deliveryFulfillment.tags =
+                    [
+                        {
+                            'code': 'cancel_request',
+                            'list':
+                                [
+                                    {
+                                        "code": "rto_id",
+                                        "value": rtoRequest.id
+                                    },
+
+                                    {
+                                        'code': 'reason_id',
+                                        'value': payload.reasonId
+                                    },
+                                    {
+                                        'code': 'initiated_by',
+                                        'value': 'ref-app-seller-staging-v2.ondc.org' //TODO: take it from ENV
+                                    }
+                                ]
+                        },
+                        {
+                            'code': 'precancel_state',
+                            'list':
+                                [
+                                    {
+                                        'code': 'fulfillment_state',
+                                        'value': deliveryFulfillment.state.descriptor.code
+                                    },
+                                    {
+                                        'code': 'updated_at',
+                                        'value': order.updatedAt
+                                    }
+                                ]
+                        }
+                    ];
+                deliveryFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': newStatusData.orderStatus
+                    }
+                };
+                order.fulfillments = [];
+                order.fulfillments.push(rtoFulfillment);
+                order.fulfillments.push(deliveryFulfillment);
+
+                await Order.findOneAndUpdate({ orderId: orderId }, { items: order.items, fulfillments: order.fulfillments, cancellation_reason_id: payload.reasonId, state: newStatusData.orderStatus });
+
+                //notify client to update order status ready to ship to logistics
+                let httpRequest = new HttpRequest(
+                    mergedEnvironmentConfig.intraServiceApiEndpoints.client,
+                    '/api/client/status/cancel',
+                    'POST',
+                    { data: order },
+                    {}
+                );
+                await httpRequest.send();
+
+            }
             //create new fulfillment history
 
             let fulfillmentHistory = {
@@ -509,14 +700,14 @@ class OrderService {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
                 returnRequest.request.state = {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
 
@@ -526,7 +717,7 @@ class OrderService {
                     'descriptor':
                     {
                         'code': 'Return_Rejected',
-                        'Short_desc': '001', //TODO: HARD coded for now
+                        'Short_desc': data.reason,
                     }
                 };
                 updatedFulfillment['@ondc/org/provider_name'] = 'LSP courier 1';
@@ -636,8 +827,282 @@ class OrderService {
                 order.quote = await this.updateQoute(order.quote, quantity, item);
 
             }
+            if (data.state === 'Accepted') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
 
-            await Fulfillment.findOneAndUpdate({ _id: returnRequest._id }, { request: returnRequest.request, quote_trail: returnRequest.quote_trail });
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Approved'
+                    }
+                };
+                updatedFulfillment['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+
+                //1. append item list with this item id and fulfillment id
+                let item = returnRequest.request.tags[0].list.find(x => x.code === 'item_id').value;
+                let quantity = parseInt(returnRequest.request.tags[0].list.find(x => x.code === 'item_quantity').value);
+
+                let itemIndex = order.items.findIndex(x => x.id === item);
+                let itemToBeUpdated = order.items.find(x => x.id === item);
+                itemToBeUpdated.quantity.count = parseInt(itemToBeUpdated.quantity.count) - parseInt(quantity);
+                order.items[itemIndex] = itemToBeUpdated; //Qoute needs to be updated here.
+
+                //get product price
+                let productItem = await Product.findOne({ _id: item });
+
+                let qouteTrail = {
+                    'code': 'quote_trail',
+                    'list':
+                        [
+                            {
+                                'code': 'type',
+                                'value': 'item'
+                            },
+                            {
+                                'code': 'id',
+                                'value': item
+                            },
+                            {
+                                'code': 'currency',
+                                'value': 'INR'
+                            },
+                            {
+                                'code': 'value',
+                                'value': '-' + (productItem.MRP * quantity)
+                            }
+                        ]
+                };
+
+                returnRequest.quote_trail = qouteTrail;
+                updatedFulfillment.tags = [];
+                updatedFulfillment.tags.push(returnRequest.request.tags[0]);
+                updatedFulfillment.tags.push(qouteTrail);
+
+                updatedFulfillment.start = order.storeAddress;
+
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    }
+                }
+                updatedFulfillment.end = {
+                    'location': {
+                        'address': order.billing.address
+                    }
+                }
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                let itemObject = {
+                    'id': item,
+                    'fulfillment_id': data.id,
+                    'quantity':
+                    {
+                        'count': quantity
+                    }
+                };
+                order.items.push(itemObject);
+
+                //2. append qoute trail
+
+                order.quote = await this.updateQoute(order.quote, quantity, item);
+
+            }
+            if (data.state === 'Picked') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Picked'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+                const startTimeStamp = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                updatedFulfillment.start = {
+                    'location': {
+                        'address': order.billing.address
+                    },
+                    'time': {
+                        'timestamp': startTimeStamp
+                    }
+                }
+                updatedFulfillment.end = order.storeAddress;
+            }
+            if (data.state === 'Delivered') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Delivered'
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                let returnFulfillment = order.fulfillments.find((data) => { return data.type === 'Return'; });
+
+                const currentMillis = Date.now();
+                const currentTime = moment(currentMillis);
+
+                const currentTimeStamp = currentTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.end = order.storeAddress
+
+                updatedFulfillment.end.time = {
+                    'timestamp': currentTimeStamp
+                }
+                updatedFulfillment.start = {
+                    'location': {
+                        'address': order.billing.address
+                    },
+                    'time': {
+                        'timestamp': returnFulfillment?.start?.time?.timestamp ?? ''
+                    }
+                }
+
+
+            }
+            if (data.state === 'Pick up Failed') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Pick_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    },
+                    'timestamp': startTimeRange
+
+                }
+            }
+            if (data.state === 'Return Failed') {
+                returnRequest.request['@ondc/org/provider_name'] = order?.storeAddress?.location?.descriptor?.name;
+                returnRequest.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+                returnRequest.request.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+
+                let updatedFulfillment = order.fulfillments.find(x => x.id == data.id);
+                updatedFulfillment.state = {
+                    'descriptor':
+                    {
+                        'code': 'Return_Failed',
+                        'Short_desc': data.reason,
+                    }
+                };
+                let foundIndex = order.fulfillments.findIndex(x => x.id == data.id);
+                order.fulfillments[foundIndex] = updatedFulfillment;
+                const currentMillis = Date.now();
+                const startTime = moment(currentMillis);
+
+                const endTime = startTime.clone().add(30, 'minutes')
+
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                updatedFulfillment.start.time = {
+                    'range': {
+                        'start': startTimeRange,
+                        'end': endTimeRange
+                    },
+                    'timestamp': startTimeRange
+
+                }
+            }
+
+            await Fulfillment.findOneAndUpdate({ _id: returnRequest._id }, { request: returnRequest.request });
             // await Fulfillment.findOneAndUpdate({_id:returnRequest._id},{request:returnRequest.request,quote_trail:returnRequest.quote_trail});
             await returnRequest.save();
             // await order.save();

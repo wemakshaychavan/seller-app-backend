@@ -881,7 +881,7 @@ export async function mapAppliancesDataUpdate(data) {
 function itemSchema(items,customMenuData) {
 
     let attributes = items.attributes.map((attribute) => {
-        return {code: attribute.code, value: attribute.value};
+        return {code: attribute.code, value: attribute.value.toLowerCase()};
     });
     const allowedStatutoryReq = FIELD_ALLOWED_BASED_ON_PROTOCOL_KEY[items.productSubcategory1];
     const categoryIds = getcategoryIds(items,customMenuData);
@@ -1019,7 +1019,7 @@ function itemSchema(items,customMenuData) {
 }
 function itemSchemaWithCustomGroup(items,customGroup,customMenuData) {
     let attributes = items.attributes.map((attribute) => {
-        return {code: attribute.code, value: attribute.value};
+        return {code: attribute.code, value: attribute.value.toLowerCase()};
     });
     const allowedStatutoryReq = FIELD_ALLOWED_BASED_ON_PROTOCOL_KEY[items.productSubcategory1];
     const categoryIds = getcategoryIds(items,customMenuData);

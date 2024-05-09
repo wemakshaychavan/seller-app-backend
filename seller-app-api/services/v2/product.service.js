@@ -76,21 +76,12 @@ class ProductService {
             let category = domainNameSpace.find((cat) => {
                 return cat.domain === requestQuery.context.domain
             })
-            console.log({ hello: category })
-
             if (!category) {
 
-                // category = {
-                //     "name": "Grocery",
-                //     "domain": "ONDC:RET10"
-                // };
                    return false;
-                // requestQuery.context.domain = 'ONDC:RET10'; //FIXME: remove this once
 
             }
-
             //save search request
-
             let searchRequest = new SearchRequest();
             searchRequest.domain = requestQuery.context.domain;
             searchRequest.bapId = requestQuery.context.bap_id;
@@ -98,7 +89,7 @@ class ProductService {
             searchRequest.transactionId = requestQuery.context.transaction_id;
             searchRequest.searchRequest = requestQuery;
             let requestType = requestQuery.message.intent?.tags?.find((data) => data.code === "catalog_inc") ?? null
-            console.log({ requestType })
+
             if (requestType) {
                 searchRequest.type = 'incr';
                 //check if its push or pull
@@ -119,11 +110,13 @@ class ProductService {
             let productData = []
 
             if (searchRequest.type === 'fullpull') {
+
                 console.log({ seaa: searchRequest.type })
                 const cityCode = requestQuery?.context?.city ?? '';
                 const subCategory = requestQuery?.message?.intent?.category?.id ?? '';
                 const item = requestQuery?.message?.intent?.item?.descriptor?.name ?? '';
                 console.log({ cityCode,subCategory,item })
+
 
 
                 // const cityCode = requestQuery?.context?.city ?? '';
@@ -137,7 +130,6 @@ class ProductService {
                     headers
                 );
 
-                console.log({ seaa: httpRequest })
                 let result = await httpRequest.send();
 
                 logger.log('info', `[Product Service] search product : result :`, result.data);
@@ -1753,42 +1745,116 @@ class ProductService {
         let result = await httpRequest.send();
 
         let updateOrder = result.data
-        let deliveryFullfillmentIndex = updateOrder.fulfillments.findIndex(x => x.type === 'Delivery');
-        let deliveryFullfillment = updateOrder.fulfillments.find(x => x.type === 'Delivery');
-
         let fulfillmentHistory = ''
-        if (deliveryFullfillment.state.descriptor.code === 'Order-picked-up') {
-            //set start.timestamp ie. picked up timing
-            fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-picked-up')
-            deliveryFullfillment.start.time = { timestamp: fulfillmentHistory?.updatedAt }
-        }
-        if (deliveryFullfillment.state.descriptor.code === 'Order-delivered') {
-            fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-delivered')
-            deliveryFullfillment.end.time = { timestamp: fulfillmentHistory?.updatedAt }
-        }
-        updateOrder.fulfillments[deliveryFullfillmentIndex] = deliveryFullfillment;
-        //update order level state
-        httpRequest = new HttpRequest(
-            serverUrl,
-            `/api/v1/orders/${payload.message.order_id}/ondcUpdate`,
-            'PUT',
-            { data: updateOrder },
-            {}
-        );
 
-        let updateResult = await httpRequest.send();
+        if (updateOrder.state !== 'Cancelled') {
+            let deliveryFullfillmentIndex = updateOrder.fulfillments.findIndex(x => x.type === 'Delivery');
+            let deliveryFullfillment = updateOrder.fulfillments.find(x => x.type === 'Delivery');
 
-        updateOrder.order_id = updateOrder.orderId;
-        //TODO: this is hard coded for now
-        //invoice must be provided from "Order-picked-up" state
-        if (deliveryFullfillment.state.descriptor.code !== 'pending' || deliveryFullfillment.state.descriptor.code !== 'Agent-assigned') {
-            updateOrder.documents =
-                [
-                    {
-                        "url": "https://invoice_url",
-                        "label": "Invoice"
+            if (deliveryFullfillment.state.descriptor.code === 'Order-picked-up') {
+                //set start.timestamp ie. picked up timing
+                fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-picked-up')
+                deliveryFullfillment.start.time = { timestamp: fulfillmentHistory?.updatedAt }
+            }
+            if (deliveryFullfillment.state.descriptor.code === 'Order-delivered') {
+                fulfillmentHistory = await this.ondcGetFulfillmentHistory(deliveryFullfillment.id, updateOrder._id, 'Order-delivered')
+                deliveryFullfillment.end.time = { timestamp: fulfillmentHistory?.updatedAt }
+            }
+            updateOrder.fulfillments[deliveryFullfillmentIndex] = deliveryFullfillment;
+            //update order level state
+            httpRequest = new HttpRequest(
+                serverUrl,
+                `/api/v1/orders/${payload.message.order_id}/ondcUpdate`,
+                'PUT',
+                { data: updateOrder },
+                {}
+            );
+
+            let updateResult = await httpRequest.send();
+
+            updateOrder.order_id = updateOrder.orderId;
+            //TODO: this is hard coded for now
+            //invoice must be provided from "Order-picked-up" state
+            if (deliveryFullfillment.state.descriptor.code !== 'pending' || deliveryFullfillment.state.descriptor.code !== 'Agent-assigned') {
+                updateOrder.documents =
+                    [
+                        {
+                            "url": "https://invoice_url",
+                            "label": "Invoice"
+                        }
+                    ]
+            }
+        } else {
+            let rtoFullfillmentIndex = updateOrder.fulfillments.findIndex(x => x.type === 'RTO');
+            let rtoFullfillment = updateOrder.fulfillments.find(x => x.type === 'RTO');
+            if (rtoFullfillment.state.descriptor.code === 'RTO-Initiated') {
+                //set start.timestamp ie. initiated timing
+                fulfillmentHistory = await this.ondcGetFulfillmentHistory(rtoFullfillment.id, updateOrder._id, 'RTO-Initiated');
+                // Extract the timestamp from fulfillmentHistory
+                const startTimestamp = fulfillmentHistory?.updatedAt;
+
+                // Create moment objects for timestamp and timestamp + 4 hours
+                const startTime = moment(startTimestamp);
+                const startTimeRange = startTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                // Construct the start time range object
+                const start = {
+                    time: {
+                        timestamp: startTimeRange
                     }
-                ]
+                };
+
+                // Assign the start time range object to rtoFullfillment.start
+                rtoFullfillment.start = start;
+
+                updateOrder.fulfillments[rtoFullfillmentIndex] = rtoFullfillment;
+                //update order level state
+                httpRequest = new HttpRequest(
+                    serverUrl,
+                    `/api/v1/orders/${payload.message.order_id}/ondcUpdate`,
+                    'PUT',
+                    { data: updateOrder },
+                    {}
+                );
+
+                let updateResult = await httpRequest.send();
+
+                updateOrder.order_id = updateOrder.orderId;
+
+            } else if (rtoFullfillment.state.descriptor.code === 'RTO-Delivered' || rtoFullfillment.state.descriptor.code === 'RTO-Disposed') {
+                fulfillmentHistory = await this.ondcGetFulfillmentHistory(rtoFullfillment.id, updateOrder._id, rtoFullfillment.state.descriptor.code);
+                // Extract the timestamp from fulfillmentHistory
+                const endTimestamp = fulfillmentHistory?.updatedAt;
+
+                // Create moment objects for timestamp and timestamp + 4 hours
+                const endTime = moment(endTimestamp);
+                const endTimeRange = endTime.clone().add(4, 'hours').utc().format('YYYY-MM-DDTHH:mm:ss.SSS[Z]');
+
+                // Construct the start time range object
+                const end = {
+                    time: {
+                        timestamp: endTimeRange
+                    }
+                };
+
+                // Assign the start time range object to rtoFullfillment.start
+                rtoFullfillment.end = end;
+
+                updateOrder.fulfillments[rtoFullfillmentIndex] = rtoFullfillment;
+                //update order level state
+                httpRequest = new HttpRequest(
+                    serverUrl,
+                    `/api/v1/orders/${payload.message.order_id}/ondcUpdate`,
+                    'PUT',
+                    { data: updateOrder },
+                    {}
+                );
+
+                let updateResult = await httpRequest.send();
+
+                updateOrder.order_id = updateOrder.orderId;
+
+            }
         }
         const productData = await getStatus({
             context: confirmRequest.confirmRequest.context,
@@ -2498,7 +2564,7 @@ class ProductService {
 
         bpptag.list.push({
             "code": "provider_tax_number",
-            "value": org.providerDetail.PAN.PAN
+            "value": org.providerDetail.PAN?.PAN
         })
 
         let tags = []
@@ -2681,7 +2747,7 @@ class ProductService {
                         [
                             {
                                 "code": "tax_number",
-                                "value": `${org.providerDetail.GSTN.GSTN}`
+                                "value": `${org.providerDetail.GSTN?.GSTN}`
                             }
                         ]
                 }
