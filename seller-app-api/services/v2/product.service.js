@@ -77,7 +77,9 @@ class ProductService {
                 return cat.domain === requestQuery.context.domain
             })
             if (!category) {
+
                    return false;
+
             }
             //save search request
             let searchRequest = new SearchRequest();
@@ -109,9 +111,21 @@ class ProductService {
 
             if (searchRequest.type === 'fullpull') {
 
+                console.log({ seaa: searchRequest.type })
+                const cityCode = requestQuery?.context?.city ?? '';
+                const subCategory = requestQuery?.message?.intent?.category?.id ?? '';
+                const item = requestQuery?.message?.intent?.item?.descriptor?.name ?? '';
+                console.log({ cityCode,subCategory,item })
+
+
+
+                // const cityCode = requestQuery?.context?.city ?? '';
+                // const subCategory = requestQuery?.message?.intent?.category?.id ?? '';
+                // const item = requestQuery?.message?.intent?.item?.descriptor?.name ?? '';
+                console.log({ cityCode,subCategory,item })
                 let httpRequest = new HttpRequest(
                     serverUrl,
-                    `/api/v1/products/search/increamentalPull/${category.name}?city=${requestQuery?.context?.city ?? ''}`, //TODO: allow $like query
+                    `/api/v1/products/search/increamentalPull/${category.name}?city=${cityCode}&subCategory=${subCategory}&item=${item}`, //TODO: allow $like query
                     'get',
                     headers
                 );
