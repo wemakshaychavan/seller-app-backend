@@ -14,7 +14,7 @@ import {mapBPCData,mapBPCDataIncr,mapBPCDataUpdate} from './category/bpc';
 import {mapAgricultureData,mapAgricultureDataIncr,mapAgricultureDataUpdate} from './category/agriculture';
 import {mapToysnGamesData,mapToysnGamesDataIncr,mapToysnGamesDataUpdate} from './category/toys&games';
 const BPP_ID = config.get("sellerConfig").BPP_ID
-const BPP_URI = config.get("sellerConfig").BPP_URI
+const BPP_URI = config.get("sellerConfig").RETAIL_BPP_URI
 
 exports.getProducts = async (data) => {
 

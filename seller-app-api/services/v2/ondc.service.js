@@ -92,7 +92,7 @@ class OndcService {
                         "action": "search",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "transaction_id": uuidv4(),
                         "message_id": logisticsMessageId,
                         "timestamp": new Date(),
@@ -278,8 +278,8 @@ class OndcService {
             try {
                 let headers = {};
                 let httpRequest = new HttpRequest(
-                    config.get("sellerConfig").BPP_URI,
-                    `/protocol/v1/on_select`,
+                    config.get("sellerConfig").RETAIL_BPP_URI,
+                    `/on_select`,
                     'POST',
                     searchRequest,
                     headers
@@ -321,8 +321,8 @@ class OndcService {
                 try {
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/search`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/search`,
                         'POST',
                         searchRequest,
                         headers
@@ -342,7 +342,7 @@ class OndcService {
                 setTimeout(() => {
                     logger.log('info', `[Ondc Service] search logistics payload - timeout : param :`, searchRequest);
                     this.buildSelectRequest(logisticsMessageId, selectMessageId, onNetworkLogistics)
-                }, 4000); //TODO move to config
+                }, 6000); //TODO move to config
             } else {
                 this.buildSelectRequest(logisticsMessageId, selectMessageId, onNetworkLogistics)
             }
@@ -360,9 +360,18 @@ class OndcService {
                 selectMessageId
             });
             //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, selectMessageId, 'select')
+            let logistics_on_search= await this.getLogisticsDumps(logisticsMessageId, 'on_search')
+
+            if(logistics_on_search.data.length>0){
+                logistics_on_search=logistics_on_search.data.map((data)=>{return data.request});
+            }
+            let retail_select = await this.getRetailDumps(selectMessageId, 'select')
+            if(retail_select.data.length>0){
+                retail_select = [retail_select.data[0].request]
+            }
+
             //2. if data present then build select response
-            let selectResponse = await productService.productSelect(logisticsResponse, onNetworkLogistics)
+            let selectResponse = await productService.productSelect({logistics_on_search,retail_select}, onNetworkLogistics)
             //3. post to protocol layer
             await this.postSelectResponse(selectResponse);
 
@@ -400,39 +409,23 @@ class OndcService {
     }
 
     //get all logistics response from protocol layer
-    async getLogistics(logisticsMessageId, retailMessageId, type) {
+    async getLogisticsDumps(logisticsMessageId,  type) {
         try {
 
-            logger.log('info', `[Ondc Service] get logistics : param :`, { logisticsMessageId, retailMessageId, type });
+            logger.log('info', `[Ondc Service] get logistics : param :`, { logisticsMessageId, type });
 
             let headers = {};
-            let query = ''
-            if (type === 'select') {
-                query = `logisticsOnSearch=${logisticsMessageId}&select=${retailMessageId}`
-            } else if (type === 'init') {
-                query = `logisticsOnInit=${logisticsMessageId}&init=${retailMessageId}`
-            } else if (type === 'confirm') {
-                query = `logisticsOnConfirm=${logisticsMessageId}&confirm=${retailMessageId}`
-            } else if (type === 'track') {
-                query = `logisticsOnTrack=${logisticsMessageId}&track=${retailMessageId}`
-            } else if (type === 'status') {
-                query = `logisticsOnStatus=${logisticsMessageId}&status=${retailMessageId}`
-            } else if (type === 'update') {
-                query = `logisticsOnUpdate=${logisticsMessageId}&update=${retailMessageId}`
-            } else if (type === 'cancel') {
-                query = `logisticsOnCancel=${logisticsMessageId}&cancel=${retailMessageId}`
-            } else if (type === 'support') {
-                query = `logisticsOnSupport=${logisticsMessageId}&support=${retailMessageId}`
-            }
+            let query =  `messageId=${logisticsMessageId}&action=${type}`
+
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/response/network-request-payloads?${query}`,
+                config.get("sellerConfig").LOGISTICS_BAP_URI,
+                `/request-dump?${query}`,
                 'get',
                 {},
                 headers
             );
 
-            console.log(httpRequest)
+            // console.log(httpRequest)
 
             let result = await httpRequest.send();
 
@@ -447,6 +440,40 @@ class OndcService {
 
     }
 
+
+    //get all logistics response from protocol layer
+    async getRetailDumps(retailMessageId, type) {
+        try {
+
+            logger.log('info', `[Ondc Service] get logistics : param :`, { retailMessageId, type });
+
+            let headers = {};
+            let query =  `messageId=${retailMessageId}&action=${type}`
+
+            let httpRequest = new HttpRequest(
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/request-dump?${query}`,
+                'get',
+                {},
+                headers
+            );
+
+            // console.log(httpRequest)
+
+            let result = await httpRequest.send();
+
+            logger.log('info', `[Ondc Service] get logistics : response :`, result.data);
+
+            return result.data
+
+        } catch (e) {
+            logger.error('error', `[Ondc Service] get logistics : response :`, e);
+            return e
+        }
+
+    }
+
+
     //return select response to protocol layer
     async postSelectResponse(selectResponse) {
         try {
@@ -455,8 +482,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_select`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_select`,
                 'POST',
                 selectResponse,
                 headers
@@ -581,7 +608,7 @@ class OndcService {
                         "action": "init",
                         "core_version": "1.2.0",
                         "bap_id": BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics?.context?.bpp_id, //STORED OBJECT TODO static for now
                         "bpp_uri": logistics?.context?.bpp_uri, //STORED OBJECT TODO static for now
                         "transaction_id": logistics?.context?.transaction_id, //TODO static for now
@@ -844,8 +871,8 @@ class OndcService {
                 try {
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/init`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/init`,
                         'POST',
                         searchRequest,
                         headers
@@ -880,11 +907,22 @@ class OndcService {
             logger.log('info', `[Ondc Service] build init request :`, { logisticsMessageId, initMessageId });
 
             //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'init')
+            // let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'init')
+
+                        //1. look up for logistics
+                        let logistics_on_init= await this.getLogisticsDumps(logisticsMessageId, 'on_init')
+
+                        if(logistics_on_init.data.length>0){
+                            logistics_on_init=logistics_on_init.data.map((data)=>{return data.request});
+                        }
+                        let retail_init = await this.getRetailDumps(initMessageId, 'init')
+                        if(retail_init.data.length>0){
+                            retail_init = [retail_init.data[0].request]
+                        }
 
             //2. if data present then build select response
-            logger.log('info', `[Ondc Service] build init request - get logistics response :`, logisticsResponse);
-            let selectResponse = await productService.productInit(logisticsResponse, onNetworkLogistics)
+            logger.log('info', `[Ondc Service] build init request - get logistics response :`, );
+            let selectResponse = await productService.productInit({logistics_on_init,retail_init}, onNetworkLogistics)
 
             //3. post to protocol layer
             await this.postInitResponse(selectResponse);
@@ -904,8 +942,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_init`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_init`,
                 'POST',
                 initResponse,
                 headers
@@ -1066,7 +1104,7 @@ class OndcService {
                         "action": "confirm",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                         "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                         "transaction_id": initRequest.logisticsTransactionId,
@@ -1280,8 +1318,8 @@ class OndcService {
 
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/confirm`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/confirm`,
                         'POST',
                         searchRequest,
                         headers
@@ -1311,14 +1349,21 @@ class OndcService {
     }
 
 
-    async buildConfirmRequest(logisticsMessageId, initMessageId, onNetworkLogistics) {
+    async buildConfirmRequest(logisticsMessageId, retailMessageId, onNetworkLogistics) {
 
         try {
-            //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'confirm')
-            //2. if data present then build select response
+                        //1. look up for logistics
+                        let logistics_on_confirm= await this.getLogisticsDumps(logisticsMessageId, 'on_confirm')
 
-            let selectResponse = await productService.productConfirm(logisticsResponse, onNetworkLogistics)
+                        if(logistics_on_confirm.data.length>0){
+                            logistics_on_confirm=logistics_on_confirm.data.map((data)=>{return data.request});
+                        }
+                        let retail_confirm = await this.getRetailDumps(retailMessageId, 'confirm')
+                        if(retail_confirm.data.length>0){
+                            retail_confirm = [retail_confirm.data[0].request]
+                        }
+
+            let selectResponse = await productService.productConfirm({logistics_on_confirm,retail_confirm}, onNetworkLogistics)
 
             //3. post to protocol layer
             await this.postConfirmResponse(selectResponse);
@@ -1358,8 +1403,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_confirm`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_confirm`,
                 'POST',
                 confirmResponse,
                 headers
@@ -1403,7 +1448,7 @@ class OndcService {
                         "action": "track",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                         "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                         "transaction_id": confirmRequest.logisticsTransactionId,
@@ -1442,8 +1487,8 @@ class OndcService {
 
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/track`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/track`,
                         'POST',
                         searchRequest,
                         headers
@@ -1473,14 +1518,21 @@ class OndcService {
         }
     }
 
-    async buildTrackRequest(logisticsMessageId, initMessageId, onNetworkLogistics) {
+    async buildTrackRequest(logisticsMessageId, retailMessageId, onNetworkLogistics) {
 
         try {
-            //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'track')
-            //2. if data present then build select response
+                        //1. look up for logistics
+                        let logistics_on_track= await this.getLogisticsDumps(logisticsMessageId, 'on_track')
 
-            let selectResponse = await productService.productTrack(logisticsResponse, onNetworkLogistics)
+                        if(logistics_on_track.data.length>0){
+                            logistics_on_track=logistics_on_track.data.map((data)=>{return data.request});
+                        }
+                        let retail_track = await this.getRetailDumps(retailMessageId, 'track')
+                        if(retail_track.data.length>0){
+                            retail_track = [retail_track.data[0].request]
+                        }
+
+            let selectResponse = await productService.productTrack({retail_track,logistics_on_track}, onNetworkLogistics)
 
             //3. post to protocol layer
             await this.postTrackResponse(selectResponse);
@@ -1498,8 +1550,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_track`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_track`,
                 'POST',
                 trackResponse,
                 headers
@@ -1543,7 +1595,7 @@ class OndcService {
                         "action": "status",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                         "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                         "transaction_id": confirmRequest.logisticsTransactionId,
@@ -1616,7 +1668,7 @@ class OndcService {
                     "action": "update",
                     "core_version": "1.2.0",
                     "bap_id": config.get("sellerConfig").BPP_ID,
-                    "bap_uri": config.get("sellerConfig").BPP_URI,
+                    "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                     "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                     "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                     "transaction_id": confirmRequest.logisticsTransactionId,
@@ -1722,7 +1774,7 @@ class OndcService {
                         "action": "cancel",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                         "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                         "transaction_id": confirmRequest.logisticsTransactionId,
@@ -1776,7 +1828,7 @@ class OndcService {
                     "action": "update",
                     "core_version": "1.1.0",
                     "bap_id": config.get("sellerConfig").BPP_ID,
-                    "bap_uri": config.get("sellerConfig").BPP_URI,
+                    "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                     "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                     "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                     "transaction_id": confirmRequest.logisticsTransactionId,
@@ -2016,8 +2068,8 @@ class OndcService {
 
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/status`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/status`,
                         'POST',
                         statusRequest,
                         headers
@@ -2243,7 +2295,7 @@ class OndcService {
                         "action": "cancel",
                         "core_version": "1.2.0",
                         "bap_id": config.get("sellerConfig").BPP_ID,
-                        "bap_uri": config.get("sellerConfig").BAP_URI,
+                        "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                         "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                         "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                         "transaction_id": confirmRequest.logisticsTransactionId,
@@ -2283,8 +2335,8 @@ class OndcService {
 
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/cancel`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/cancel`,
                         'POST',
                         searchRequest,
                         headers
@@ -2323,8 +2375,8 @@ class OndcService {
 
                     let headers = {};
                     let httpRequest = new HttpRequest(
-                        config.get("sellerConfig").BPP_URI,
-                        `/protocol/logistics/v1/cancel`,
+                        config.get("sellerConfig").LOGISTICS_BAP_URI,
+                        `/cancel`,
                         'POST',
                         cancelRequest,
                         headers
@@ -2354,15 +2406,22 @@ class OndcService {
         }
     }
 
-    async buildStatusRequest(statusRequest, logisticsMessageId, initMessageId, unsoliciated, payload, onNetworkLogistics) {
+    async buildStatusRequest(statusRequest, logisticsMessageId, retailMessageId, unsoliciated, payload, onNetworkLogistics) {
 
         try {
-            //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'status')
-            //2. if data present then build select response
+                        //1. look up for logistics
+                        let logistics_on_status= await this.getLogisticsDumps(logisticsMessageId, 'on_status')
+
+                        if(logistics_on_status.data.length>0){
+                            logistics_on_status=logistics_on_status.data.map((data)=>{return data.request});
+                        }
+                        let retail_status = await this.getRetailDumps(retailMessageId, 'status')
+                        if(retail_status.data.length>0){
+                            retail_status = [retail_status.data[0].request]
+                        }
 
             console.log("statusRequest-----build>", statusRequest);
-            let statusResponse = await productService.productStatus(logisticsResponse, statusRequest, unsoliciated, payload, onNetworkLogistics)
+            let statusResponse = await productService.productStatus({retail_status,logistics_on_status}, retail_status, unsoliciated, payload, onNetworkLogistics)
 
             //3. post to protocol layer
             await this.postStatusResponse(statusResponse);
@@ -2376,11 +2435,17 @@ class OndcService {
     async buildUpdateRequest(statusRequest, logisticsMessageId, initMessageId) {
 
         try {
-            //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'update')
-            //2. if data present then build select response
+                        //1. look up for logistics
+                        let logistics_on_update= await this.getLogisticsDumps(logisticsMessageId, 'on_update')
 
-            let statusResponse = await productService.productUpdate(logisticsResponse)
+                        if(logistics_on_update.data.length>0){
+                            logistics_on_update=logistics_on_search.data.map((data)=>{return data.request});
+                        }
+                        let retail_update = await this.getRetailDumps(selectMessageId, 'update')
+                        if(retail_update.data.length>0){
+                            retail_update = [retail_update.data[0].request]
+                        }
+            let statusResponse = await productService.productUpdate({retail_update,logistics_on_update})
 
             //3. post to protocol layer
             await this.postUpdateResponse(statusResponse);
@@ -2475,14 +2540,21 @@ class OndcService {
     }
 
 
-    async buildCancelRequest(logisticsMessageId, initMessageId, onNetworkLogistics) {
+    async buildCancelRequest(logisticsMessageId, retailMessageId, onNetworkLogistics) {
 
         try {
-            //1. look up for logistics
-            let logisticsResponse = await this.getLogistics(logisticsMessageId, initMessageId, 'cancel')
-            //2. if data present then build select response
+                        //1. look up for logistics
+                        let logistics_on_cancel= await this.getLogisticsDumps(logisticsMessageId, 'on_cancel')
 
-            let statusResponse = await productService.productCancel(logisticsResponse, onNetworkLogistics)
+                        if(logistics_on_cancel.data.length>0){
+                            logistics_on_cancel=logistics_on_cancel.data.map((data)=>{return data.request});
+                        }
+                        let retail_cancel = await this.getRetailDumps(retailMessageId, 'cancel')
+                        if(retail_cancel.data.length>0){
+                            retail_cancel = [retail_cancel.data[0].request]
+                        }
+
+            let statusResponse = await productService.productCancel({retail_cancel,logistics_on_cancel}, onNetworkLogistics)
 
             //3. post to protocol layer
             await this.postCancelResponse(statusResponse);
@@ -2518,8 +2590,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_status`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_status`,
                 'POST',
                 statusResponse,
                 headers
@@ -2543,8 +2615,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_update`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_update`,
                 'POST',
                 statusResponse,
                 headers
@@ -2568,8 +2640,8 @@ class OndcService {
             console.log({ itemdata: statusResponse })
             let headers = { "X-ONDC-Search-Response": 'inc' }
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_search`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_search`,
                 'POST',
                 statusResponse,
                 headers
@@ -2593,8 +2665,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_cancel`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_cancel`,
                 'POST',
                 statusResponse,
                 headers
@@ -2619,8 +2691,8 @@ class OndcService {
 
             let headers = {};
             let httpRequest = new HttpRequest(
-                config.get("sellerConfig").BPP_URI,
-                `/protocol/v1/on_cancel`,
+                config.get("sellerConfig").RETAIL_BPP_URI,
+                `/on_cancel`,
                 'POST',
                 statusResponse,
                 headers
@@ -2659,7 +2731,7 @@ class OndcService {
                     "action": "support",
                     "core_version": "1.1.0",
                     "bap_id": config.get("sellerConfig").BPP_ID,
-                    "bap_uri": config.get("sellerConfig").BPP_URI,
+                    "bap_uri": config.get("sellerConfig").LOGISTICS_BAP_URI,
                     "bpp_id": logistics.context.bpp_id,//STORED OBJECT
                     "bpp_uri": logistics.context.bpp_uri, //STORED OBJECT
                     "transaction_id": selectRequest.logisticsTransactionId,
@@ -2696,20 +2768,23 @@ class OndcService {
 
             let requestQuery = {}
 
-            const confirmRequest = await ConfirmRequest.findOne({
-                where: {
-                    retailOrderId: payload.message.order.id
-                }
-            })
 
-            requestQuery.retail_status = [confirmRequest.confirmRequest]
-            console.log("confirmRequest.onConfirmResponse",confirmRequest.confirmRequest)
-
-            requestQuery.logistics_on_status = [payload]
-            payload.message.order_id = payload.message.order.id
-            payload.context = confirmRequest.confirmRequest.context
             if (req.type === 'on_status') {
-                let on_statusResponse = await productService.productStatusUnsoliciatedLogistics(requestQuery,  {}, true, payload, true)
+
+                const confirmRequest = await ConfirmRequest.findOne({
+                    where: {
+                        retailOrderId: payload.message.order.id
+                    }
+                })
+    
+                requestQuery.retail_status = [confirmRequest.confirmRequest]
+                console.log("confirmRequest.onConfirmResponse",confirmRequest.confirmRequest)
+    
+                requestQuery.logistics_on_status = [payload]
+                payload.message.order_id = payload.message.order.id
+                payload.context = confirmRequest.confirmRequest.context
+                
+                let on_statusResponse = await productService.productStatus(requestQuery,  {}, true, payload, true)
 
                 //3. post to protocol layer
                 await this.postStatusResponse(on_statusResponse);

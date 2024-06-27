@@ -2779,11 +2779,16 @@ class ProductService {
 
             if (onNetworkLogistics) {
                 let logisticsToSelect = config.get("sellerConfig").LOGISTICS_BAP_ID
+
+                console.log("logisticProvider--logisticsToSelect>>", logisticsToSelect);
+
                 if (org.providerDetail.storeDetails.logisticsBppId) {
                     logisticsToSelect = org.providerDetail.storeDetails.logisticsBppId
                 }
                 let logisticData = requestQuery.logistics_on_search;
                 for (let logisticData1 of logisticData) {
+                    console.log("logisticProvider--logisticsToSelect>>logisticData1.context.bpp_id", logisticData1.context.bpp_id);
+
                     if (logisticData1.message) {
                         if (logisticData1.context.bpp_id === logisticsToSelect) {//TODO: move to env
                             if (logisticData1.message) {
